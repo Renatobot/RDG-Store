@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  name          String
+  email         String   @unique
+  password      String
+  walletBalance BigInt   @default(0) // Em centavos
+  role          String   @default("USER") // USER ou ADMIN
+  avatarUrl     String?  // Foto de Perfil
+  affiliateCode String?  @unique // Link único de afiliado
+  referredBy    Int?     // ID de quem o indicou
+  isVip         Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  orders        Order[]
+  reviews       Review[]
+}
+
+model Product {
+  id            Int      @id @default(autoincrement())
+  name          String
+  description   String?
+  price         Int      // Preço em centavos
+  originalPrice Int?     // Preço riscado (opcional)
+  validity      String   // Ex: "7 dias", "30 dias"
+  imageUrl      String?  // Link da imagem (opcional)
+  category      String   @default("Streaming") // "Streaming", "Combos", etc
+  badge         String?  // "🔥 Promoção", "⏳ Últimas Unidades"
+  isVip         Boolean  @default(false)
+  hasVariations Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  orderItems    OrderItem[]
+  variations    ProductVariation[]
+  credentials   Credential[]
+  reviews       Review[]
+}
+
+model ProductVariation {
+  id            Int      @id @default(autoincrement())
+  productId     Int
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name          String   // Ex: "Tela - 30 Dias" ou "Anual"
+  price         Int
+  originalPrice Int?
+  validity      String?
+  orderItems    OrderItem[]
+  credentials   Credential[]
+}
+
+model Credential {
+  id          Int      @id @default(autoincrement())
+  content     String   // O conteúdo entregue (ex: email:senha | PIN: 1)
+  isUsed      Boolean  @default(false)
+  productId   Int?     // Se o produto não tiver variação
+  product     Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variationId Int?
+  variation   ProductVariation? @relation(fields: [variationId], references: [id], onDelete: Cascade)
+  orderId     Int?     // Pode ser N credenciais para 1 order item se quantity > 1
+  orderItem   OrderItem? @relation(fields: [orderId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model Banner {
+  id             Int      @id @default(autoincrement())
+  imageUrl       String
+  mobileImageUrl String?  // Imagem otimizada para celular (quadrada ou vertical)
+  category       String?  // Categoria vinculada para clique
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+}
+
+model Order {
+  id               Int       @id @default(autoincrement())
+  userId           Int?      // Opcional por enquanto para retrocompatibilidade
+  user             User?     @relation(fields: [userId], references: [id])
+  customerName     String
+  customerWhatsapp String
+  pricePaid        Int       // Preço total pago em centavos
+  walletUsed       Int       @default(0) // Quanto do saldo foi usado
+  status           String    @default("PENDENTE") // PENDENTE, PAGO, ENTREGUE, CANCELADO
+  transactionNsu   String?   // UUID da transação na InfinitePay
+  createdAt        DateTime  @default(now())
+  paidAt           DateTime?
+  deliveredAt      DateTime?
+  items            OrderItem[]
+}
+
+model OrderItem {
+  id          Int      @id @default(autoincrement())
+  orderId     Int
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   Int
+  product     Product  @relation(fields: [productId], references: [id])
+  variationId Int?
+  variation   ProductVariation? @relation(fields: [variationId], references: [id])
+  price       Int      // Preço no momento da compra
+  quantity    Int      @default(1)
+  credentials Credential[]
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+
+model Coupon {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  type      String   // "PERCENTAGE" ou "FIXED"
+  value     Int      // Valor em centavos ou porcentagem (ex: 20 para 20%)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating    Int      // 1 a 5
+  comment   String?
+  createdAt DateTime @default(now())
+}
