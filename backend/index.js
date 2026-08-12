@@ -24,6 +24,48 @@ app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/coupons', couponsRouter);
 
+// ==========================================
+// UPLOAD DE IMAGENS (SUPABASE STORAGE)
+// ==========================================
+const multer = require('multer');
+const { createClient } = require('@supabase/supabase-js');
+const upload = multer({ storage: multer.memoryStorage() });
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
+const supabaseClient = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
+
+app.post('/api/upload', upload.single('image'), async (req, res) => {
+  try {
+    if (!supabaseClient) return res.status(500).json({ error: 'Supabase não configurado' });
+    if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' });
+    
+    // O nome do arquivo será um timestamp para evitar colisão
+    const fileName = `${Date.now()}-${Math.round(Math.random() * 1000)}.webp`;
+    
+    const { data, error } = await supabaseClient.storage
+      .from('images')
+      .upload(fileName, req.file.buffer, {
+        contentType: req.file.mimetype || 'image/webp',
+        cacheControl: '360000', // Cache por longo tempo
+        upsert: false
+      });
+
+    if (error) {
+      console.error('Supabase Upload Error:', error);
+      return res.status(500).json({ error: 'Erro interno no Storage', details: error.message });
+    }
+    
+    // Obter URL pública
+    const { data: { publicUrl } } = supabaseClient.storage.from('images').getPublicUrl(fileName);
+    
+    res.json({ url: publicUrl });
+  } catch (error) {
+    console.error('Upload Error:', error);
+    res.status(500).json({ error: 'Erro ao fazer upload da imagem' });
+  }
+});
+
 // Helper para pegar usuário do header se houver
 const getUserFromHeader = (req) => {
   const token = req.headers['authorization'];
