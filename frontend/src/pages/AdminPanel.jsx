@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, Plus, Edit, Trash2, Image as ImageIcon,
   Settings, User, LogOut, Key, Camera, ShoppingBag, Tag, Ticket,
   Layers, Search, CheckCircle, Clock, XCircle, RefreshCcw, Wallet,
-  ChevronRight, Crown, Ban, Link2, X
+  ChevronRight, Crown, Ban, Link2, X, Bot
 } from 'lucide-react';
 import StockManager from '../components/StockManager';
 import AdminDashboard from '../components/AdminDashboard';
