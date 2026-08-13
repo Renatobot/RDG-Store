@@ -145,7 +145,13 @@ Aqui está o texto base que você deve aprimorar e formatar:
 ${formData.description}`;
 
     try {
-      const response = await fetch(`https://text.pollinations.ai/prompt/${encodeURIComponent(prompt)}`);
+      const response = await fetch('https://text.pollinations.ai/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
       const data = await response.text();
       if (data) {
         setFormData({...formData, description: data.trim()});
