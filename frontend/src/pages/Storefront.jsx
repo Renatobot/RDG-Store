@@ -260,25 +260,48 @@ const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCa
             
             {/* Produtos Relacionados */}
             <div className="mt-12 pt-8 border-t border-white/10">
-              <h4 className="text-sm font-black text-white uppercase tracking-wider mb-6">Você também pode gostar</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-px flex-1 bg-gradient-to-r from-primary/30 to-transparent"></div>
+                <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Você também pode gostar</h4>
+                <div className="h-px flex-1 bg-gradient-to-l from-primary/30 to-transparent"></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 {displayRelated.map(rel => (
                   <button 
                     key={rel.id} 
-                    onClick={() => {
-                      if (setSelectedProductDetail) setSelectedProductDetail(rel);
-                    }}
-                    className="bg-white/5 border border-white/5 hover:border-primary/50 hover:bg-white/10 transition-all rounded-xl p-3 flex items-center gap-3 text-left w-full cursor-pointer"
+                    onClick={() => { if (setSelectedProductDetail) setSelectedProductDetail(rel); }}
+                    className="group relative bg-black/40 border border-white/8 hover:border-primary/40 transition-all duration-300 rounded-2xl overflow-hidden text-left w-full cursor-pointer"
                   >
-                     {rel.imageUrl && (
-                       <div className="w-14 h-14 rounded-lg bg-black/40 flex-shrink-0 flex items-center justify-center p-1 border border-white/10">
-                         <img src={rel.imageUrl} alt={rel.name} className="w-full h-full object-contain" />
-                       </div>
-                     )}
-                     <div className="flex-1 overflow-hidden">
-                       <div className="text-sm font-bold text-white line-clamp-1">{rel.name}</div>
-                       <div className="text-xs text-primary font-bold mt-1">R$ {(rel.price/100).toFixed(2).replace('.', ',')}</div>
-                     </div>
+                    {/* Glow on hover */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/0 to-primary/0 group-hover:from-primary/5 group-hover:to-purple-600/5 transition-all duration-300 rounded-2xl"></div>
+                    
+                    {/* Image */}
+                    <div className="relative w-full aspect-video bg-black/60 overflow-hidden">
+                      {rel.imageUrl ? (
+                        <img src={rel.imageUrl} alt={rel.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-600">
+                          <Package size={24}/>
+                        </div>
+                      )}
+                      {/* Badge */}
+                      {rel.badge && (
+                        <div className="absolute top-2 left-2 text-[9px] font-black bg-black/70 text-primary border border-primary/30 px-1.5 py-0.5 rounded-full backdrop-blur-sm">
+                          {rel.badge}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Info */}
+                    <div className="p-3 relative z-10">
+                      <div className="text-xs font-bold text-white line-clamp-1 mb-1.5 group-hover:text-primary transition-colors">{rel.name}</div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-black text-primary">R$ {(rel.price/100).toFixed(2).replace('.', ',')}</div>
+                        {rel.originalPrice && (
+                          <div className="text-[10px] text-gray-600 line-through">R$ {(rel.originalPrice/100).toFixed(2).replace('.', ',')}</div>
+                        )}
+                      </div>
+                    </div>
                   </button>
                 ))}
               </div>
