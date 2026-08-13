@@ -71,6 +71,8 @@ const RichDescription = ({ text }) => {
       })}
     </div>
   );
+};
+
 const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCart, products }) => {
   const hasVariations = p.hasVariations && p.variations?.length > 0;
   const [selectedVariation, setSelectedVariation] = useState(hasVariations ? p.variations[0] : null);
