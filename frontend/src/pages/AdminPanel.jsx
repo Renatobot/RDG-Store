@@ -145,7 +145,7 @@ Aqui está o texto base que você deve aprimorar e formatar:
 ${formData.description}`;
 
     try {
-      const response = await axios.post('https://streaming-store-api.onrender.com/api/admin/enhance-description', { prompt }, auth());
+      const response = await axios.post('https://backend-pink-one-92.vercel.app/api/admin/enhance-description', { prompt }, auth());
       if (response.data.text) {
         setFormData({...formData, description: response.data.text.trim()});
       }
