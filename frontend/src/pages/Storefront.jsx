@@ -8,6 +8,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { CartContext } from '../contexts/CartContext';
 import { AuthContext } from '../contexts/AuthContext';
 import { Lock, Star } from 'lucide-react';
+import { API_BASE } from '../api';
 
 const highlightKeywords = (text) => {
   const keywords = ['garantia', 'acesso imediato', '4k', 'premium', 'vitalício', 'vitalicio', 'telas', 'tela', 'suporte', 'hd', 'uhd', 'original', 'ilimitado'];
@@ -464,9 +465,9 @@ export default function Storefront() {
 
   useEffect(() => {
     // Buscar produtos, banners e configurações
-    axios.get('https://streaming-store-api.onrender.com/api/products').then(res => setProducts(res.data));
-    axios.get('https://streaming-store-api.onrender.com/api/banners').then(res => setBanners(res.data));
-    axios.get('https://streaming-store-api.onrender.com/api/settings').then(res => setSettings(res.data)).catch(() => {});
+    axios.get(`${API_BASE}/api/products`).then(res => setProducts(res.data));
+    axios.get(`${API_BASE}/api/banners`).then(res => setBanners(res.data));
+    axios.get(`${API_BASE}/api/settings`).then(res => setSettings(res.data)).catch(() => {});
   }, []);
 
   // Rotação automática dos banners
@@ -712,7 +713,7 @@ export default function Storefront() {
                       onClick={() => {
                         setSelectedProductDetail(product);
                         // Buscar avaliações do produto
-                        axios.get(`https://streaming-store-api.onrender.com/api/products/${product.id}/reviews`)
+                        axios.get(`${API_BASE}/api/products/${product.id}/reviews`)
                           .then(res => setProductReviews(res.data))
                           .catch(() => setProductReviews([]));
                       }}

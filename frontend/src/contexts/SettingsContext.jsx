@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_BASE } from '../api';
 
 export const SettingsContext = createContext({});
 
@@ -12,7 +13,7 @@ export function SettingsProvider({ children }) {
 
   const fetchSettings = async () => {
     try {
-      const res = await axios.get('https://streaming-store-api.onrender.com/api/settings');
+      const res = await axios.get(`${API_BASE}/api/settings`);
       setSettings(res.data);
 
       // Atualiza o Favicon dinamicamente

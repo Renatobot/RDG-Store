@@ -4,13 +4,14 @@ import {
   LayoutDashboard, Package, Plus, Edit, Trash2, Image as ImageIcon,
   Settings, User, LogOut, Key, Camera, ShoppingBag, Tag, Ticket,
   Layers, Search, CheckCircle, Clock, XCircle, RefreshCcw, Wallet,
-  ChevronRight, Crown, Ban, Link2, X, Bot
+  ChevronRight, Crown, Ban, Link2, X, Bot, CreditCard, Copy, Check
 } from 'lucide-react';
 import StockManager from '../components/StockManager';
 import AdminDashboard from '../components/AdminDashboard';
 import AffiliatesPanel from '../components/AffiliatesPanel';
 import { AuthContext } from '../contexts/AuthContext';
 import ImageUploader from '../components/ImageUploader';
+import { API_BASE } from '../api';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 const fmtR = c => `R$ ${(c / 100).toFixed(2).replace('.', ',')}`;
@@ -59,7 +60,27 @@ export default function AdminPanel() {
   const [credentials, setCredentials] = useState([]);
   const [usersSearch, setUsersSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
-  const [settings, setSettings] = useState({ whatsapp: '', telegram: '', affiliate_type: 'PERCENTAGE', affiliate_value: '10' });
+  const [settings, setSettings] = useState({
+    whatsapp: '',
+    telegram: '',
+    logo_url: '',
+    favicon_url: '',
+    affiliate_type: 'PERCENTAGE',
+    affiliate_value: '10',
+    gateway_active: 'MERCADO_PAGO',
+    mp_access_token: '',
+    infinitepay_handle: '',
+    infinitepay_api_key: '',
+    pushinpay_token: '',
+    asaas_api_key: ''
+  });
+  const [copiedWebhook, setCopiedWebhook] = useState('');
+
+  const copyToClipboard = (text, id) => {
+    navigator.clipboard.writeText(text);
+    setCopiedWebhook(id);
+    setTimeout(() => setCopiedWebhook(''), 2000);
+  };
 
   const CATS = ['Streaming','Contas Premium','Combos','Telas','IPTV','Produtos Digitais','Internet Ilimitada','Inteligência Artificial','Ferramentas','Adultos','Games','APKs Premium'];
   const BADGES = ['🔥 MAIS VENDIDO','⏳ POUCAS UNIDADES','⚡ PROMOÇÃO','🔴 ESGOTADO'];
@@ -109,19 +130,19 @@ export default function AdminPanel() {
   const tok = () => localStorage.getItem('token');
   const auth = () => ({ headers: { Authorization: `Bearer ${tok()}` } });
 
-  const fetchOrders = () => axios.get('https://streaming-store-api.onrender.com/api/orders').then(r => setOrders(r.data)).catch(console.error);
-  const fetchProducts = () => axios.get('https://streaming-store-api.onrender.com/api/products').then(r => setProducts(r.data)).catch(console.error);
-  const fetchBanners = () => axios.get('https://streaming-store-api.onrender.com/api/banners').then(r => setBanners(r.data)).catch(console.error);
-  const fetchUsers = () => axios.get('https://streaming-store-api.onrender.com/api/users/admin/list', auth()).then(r => setUsers(r.data)).catch(console.error);
-  const fetchCoupons = () => axios.get('https://streaming-store-api.onrender.com/api/coupons', auth()).then(r => setCoupons(r.data)).catch(console.error);
-  const fetchSettings = () => axios.get('https://streaming-store-api.onrender.com/api/settings').then(r => setSettings(p => ({ ...p, ...r.data }))).catch(console.error);
-  const fetchCredentials = () => axios.get('https://streaming-store-api.onrender.com/api/credentials').then(r => setCredentials(r.data)).catch(console.error);
+  const fetchOrders = () => axios.get(`${API_BASE}/api/orders`).then(r => setOrders(r.data)).catch(console.error);
+  const fetchProducts = () => axios.get(`${API_BASE}/api/products`).then(r => setProducts(r.data)).catch(console.error);
+  const fetchBanners = () => axios.get(`${API_BASE}/api/banners`).then(r => setBanners(r.data)).catch(console.error);
+  const fetchUsers = () => axios.get(`${API_BASE}/api/users/admin/list`, auth()).then(r => setUsers(r.data)).catch(console.error);
+  const fetchCoupons = () => axios.get(`${API_BASE}/api/coupons`, auth()).then(r => setCoupons(r.data)).catch(console.error);
+  const fetchSettings = () => axios.get(`${API_BASE}/api/settings`).then(r => setSettings(p => ({ ...p, ...r.data }))).catch(console.error);
+  const fetchCredentials = () => axios.get(`${API_BASE}/api/credentials`).then(r => setCredentials(r.data)).catch(console.error);
 
   // ── Orders ──────────────────────────────────────────────────────────────────
-  const markDelivered = id => axios.patch(`https://streaming-store-api.onrender.com/api/orders/${id}/status`, { status:'ENTREGUE' }).then(fetchOrders).catch(() => alert('Erro'));
+  const markDelivered = id => axios.patch(`${API_BASE}/api/orders/${id}/status`, { status:'ENTREGUE' }).then(fetchOrders).catch(() => alert('Erro'));
   const refund = async id => {
     if (!window.confirm('Reembolsar para a carteira do cliente?')) return;
-    await axios.post('https://streaming-store-api.onrender.com/api/users/admin/refund', { orderId:id }, auth()).then(fetchOrders).catch(e => alert(e.response?.data?.error || 'Erro'));
+    await axios.post(`${API_BASE}/api/users/admin/refund`, { orderId:id }, auth()).then(fetchOrders).catch(e => alert(e.response?.data?.error || 'Erro'));
   };
 
   // ── Products ─────────────────────────────────────────────────────────────────
@@ -192,30 +213,30 @@ ${formData.description}`;
       variations:formData.variations.map(v=>({ name:v.name, validity:v.validity, price:Math.round(parseFloat(v.price.replace(',','.')||0)*100), originalPrice:v.originalPrice?Math.round(parseFloat(v.originalPrice.replace(',','.'))*100):null })),
       bundleItems:formData.bundleItems.map(b=>({ componentId: parseInt(b.componentId), quantity: parseInt(b.quantity) }))
     };
-    try { editingId ? await axios.put(`https://streaming-store-api.onrender.com/api/products/${editingId}`, payload) : await axios.post('https://streaming-store-api.onrender.com/api/products', payload); setIsModalOpen(false); fetchProducts(); } catch { alert('Erro ao salvar produto'); }
+    try { editingId ? await axios.put(`${API_BASE}/api/products/${editingId}`, payload) : await axios.post(`${API_BASE}/api/products`, payload); setIsModalOpen(false); fetchProducts(); } catch { alert('Erro ao salvar produto'); }
   };
-  const deleteProduct = async id => { if (!window.confirm('Excluir produto?')) return; await axios.delete(`https://streaming-store-api.onrender.com/api/products/${id}`).then(fetchProducts).catch(()=>alert('Erro')); };
+  const deleteProduct = async id => { if (!window.confirm('Excluir produto?')) return; await axios.delete(`${API_BASE}/api/products/${id}`).then(fetchProducts).catch(()=>alert('Erro')); };
 
   // ── Banners ──────────────────────────────────────────────────────────────────
   const saveBanner = async e => {
     e.preventDefault();
     if (!bannerUrl) return;
-    editBannerId ? await axios.put(`https://streaming-store-api.onrender.com/api/banners/${editBannerId}`, { imageUrl:bannerUrl, mobileImageUrl: mobileBannerUrl, category:bannerCat }) : await axios.post('https://streaming-store-api.onrender.com/api/banners', { imageUrl:bannerUrl, mobileImageUrl: mobileBannerUrl, category:bannerCat });
+    editBannerId ? await axios.put(`${API_BASE}/api/banners/${editBannerId}`, { imageUrl:bannerUrl, mobileImageUrl: mobileBannerUrl, category:bannerCat }) : await axios.post(`${API_BASE}/api/banners`, { imageUrl:bannerUrl, mobileImageUrl: mobileBannerUrl, category:bannerCat });
     setBannerUrl(''); setMobileBannerUrl(''); setBannerCat(''); setEditBannerId(null); fetchBanners();
   };
 
   // ── Coupons ──────────────────────────────────────────────────────────────────
-  const addCoupon = async e => { e.preventDefault(); try { await axios.post('https://streaming-store-api.onrender.com/api/coupons', couponForm, auth()); setCouponForm({ code:'', type:'PERCENTAGE', value:'' }); fetchCoupons(); } catch { alert('Erro. Código já existe?'); } };
-  const deleteCoupon = async id => { if (!window.confirm('Excluir cupom?')) return; await axios.delete(`https://streaming-store-api.onrender.com/api/coupons/${id}`, auth()).then(fetchCoupons); };
-  const toggleCoupon = async (id, active) => { await axios.put(`https://streaming-store-api.onrender.com/api/coupons/${id}`, { isActive:!active }, auth()).then(fetchCoupons); };
+  const addCoupon = async e => { e.preventDefault(); try { await axios.post(`${API_BASE}/api/coupons`, couponForm, auth()); setCouponForm({ code:'', type:'PERCENTAGE', value:'' }); fetchCoupons(); } catch { alert('Erro. Código já existe?'); } };
+  const deleteCoupon = async id => { if (!window.confirm('Excluir cupom?')) return; await axios.delete(`${API_BASE}/api/coupons/${id}`, auth()).then(fetchCoupons); };
+  const toggleCoupon = async (id, active) => { await axios.put(`${API_BASE}/api/coupons/${id}`, { isActive:!active }, auth()).then(fetchCoupons); };
 
   // ── Settings ─────────────────────────────────────────────────────────────────
-  const saveSettings = async e => { e.preventDefault(); try { await axios.put('https://streaming-store-api.onrender.com/api/settings', settings); alert('Salvo!'); } catch { alert('Erro'); } };
+  const saveSettings = async e => { e.preventDefault(); try { await axios.put(`${API_BASE}/api/settings`, settings); alert('Salvo!'); } catch { alert('Erro'); } };
 
   // ── Profile ──────────────────────────────────────────────────────────────────
-  const changePw = async e => { e.preventDefault(); try { await axios.put('https://streaming-store-api.onrender.com/api/users/me/password', pwForm, auth()); alert('Senha alterada!'); setPwModal(false); setPwForm({ currentPassword:'', newPassword:'' }); } catch(err){ alert(err.response?.data?.error||'Erro'); } };
-  const changeAvatar = async e => { e.preventDefault(); try { const r = await axios.put('https://streaming-store-api.onrender.com/api/users/me/avatar', avatarForm, auth()); setUser(r.data.user); alert('Foto alterada!'); setAvatarModal(false); } catch(err){ alert(err.response?.data?.error||'Erro'); } };
-  const changeProfile = async e => { e.preventDefault(); try { const r = await axios.put('https://streaming-store-api.onrender.com/api/users/me/profile', profileForm, auth()); setUser(r.data.user); alert('Perfil atualizado!'); setProfileModal(false); } catch(err){ alert(err.response?.data?.error||'Erro'); } };
+  const changePw = async e => { e.preventDefault(); try { await axios.put(`${API_BASE}/api/users/me/password`, pwForm, auth()); alert('Senha alterada!'); setPwModal(false); setPwForm({ currentPassword:'', newPassword:'' }); } catch(err){ alert(err.response?.data?.error||'Erro'); } };
+  const changeAvatar = async e => { e.preventDefault(); try { const r = await axios.put(`${API_BASE}/api/users/me/avatar`, avatarForm, auth()); setUser(r.data.user); alert('Foto alterada!'); setAvatarModal(false); } catch(err){ alert(err.response?.data?.error||'Erro'); } };
+  const changeProfile = async e => { e.preventDefault(); try { const r = await axios.put(`${API_BASE}/api/users/me/profile`, profileForm, auth()); setUser(r.data.user); alert('Perfil atualizado!'); setProfileModal(false); } catch(err){ alert(err.response?.data?.error||'Erro'); } };
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const filteredUsers = users.filter(u => { const s = usersSearch.toLowerCase(); return !s || u.id.toString().includes(s) || u.name.toLowerCase().includes(s) || u.email.toLowerCase().includes(s); });
@@ -482,7 +503,7 @@ ${formData.description}`;
                     {b.category && <div className="absolute top-3 left-3 bg-primary/90 px-3 py-1 text-xs font-bold text-white rounded-lg shadow">{b.category}</div>}
                     <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
                       <button onClick={() => { setEditBannerId(b.id); setBannerUrl(b.imageUrl); setMobileBannerUrl(b.mobileImageUrl || ''); setBannerCat(b.category||''); window.scrollTo({top:0,behavior:'smooth'}); }} className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl transition-colors"><Edit size={18}/></button>
-                      <button onClick={() => { if(window.confirm('Excluir banner?')) axios.delete(`https://streaming-store-api.onrender.com/api/banners/${b.id}`).then(fetchBanners); }} className="bg-red-600 hover:bg-red-700 text-white p-3 rounded-xl transition-colors"><Trash2 size={18}/></button>
+                      <button onClick={() => { if(window.confirm('Excluir banner?')) axios.delete(`${API_BASE}/api/banners/${b.id}`).then(fetchBanners); }} className="bg-red-600 hover:bg-red-700 text-white p-3 rounded-xl transition-colors"><Trash2 size={18}/></button>
                     </div>
                   </div>
                 ))}
@@ -545,20 +566,20 @@ ${formData.description}`;
                                 if (!v) return;
                                 const amt = Math.round(parseFloat(v.replace(',','.'))*100);
                                 if (isNaN(amt)||amt<=0) return alert('Inválido');
-                                await axios.post('https://streaming-store-api.onrender.com/api/users/admin/add-balance', { userId:u.id, amount:amt }, auth()); fetchUsers();
+                                await axios.post(`${API_BASE}/api/users/admin/add-balance`, { userId:u.id, amount:amt }, auth()); fetchUsers();
                               }} className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white border border-green-500/30 px-2 py-1 rounded-lg text-[11px] font-bold transition-colors" title="Adicionar saldo">
                                 <Wallet size={12}/>
                               </button>
                               <button onClick={async () => {
-                                await axios.post('https://streaming-store-api.onrender.com/api/users/admin/vip', { userId:u.id, vip:!u.isVip }, auth());
-                                if (u.id === user?.id) { const me = await axios.get('https://streaming-store-api.onrender.com/api/auth/me', auth()); setUser(me.data); }
+                                await axios.post(`${API_BASE}/api/users/admin/vip`, { userId:u.id, vip:!u.isVip }, auth());
+                                if (u.id === user?.id) { const me = await axios.get(`${API_BASE}/api/auth/me`, auth()); setUser(me.data); }
                                 fetchUsers();
                               }} className={`${u.isVip ? 'bg-yellow-500/20 hover:bg-yellow-500 text-yellow-400' : 'bg-gray-700 hover:bg-yellow-500 text-gray-400'} hover:text-white border border-white/10 px-2 py-1 rounded-lg text-[11px] font-bold transition-colors`} title={u.isVip?'Remover VIP':'Tornar VIP'}>
                                 <Crown size={12}/>
                               </button>
                               <button onClick={async () => {
                                 if (!window.confirm(u.role==='BANNED'?'Desbanir?':'Banir este usuário?')) return;
-                                await axios.post('https://streaming-store-api.onrender.com/api/users/admin/ban', { userId:u.id, ban:u.role!=='BANNED' }, auth()); fetchUsers();
+                                await axios.post(`${API_BASE}/api/users/admin/ban`, { userId:u.id, ban:u.role!=='BANNED' }, auth()); fetchUsers();
                               }} className={`${u.role==='BANNED' ? 'bg-gray-600/20 hover:bg-gray-600 text-gray-400' : 'bg-red-500/20 hover:bg-red-600 text-red-400'} hover:text-white border border-red-500/20 px-2 py-1 rounded-lg text-[11px] font-bold transition-colors`} title={u.role==='BANNED'?'Desbanir':'Banir'}>
                                 <Ban size={12}/>
                               </button>
@@ -693,6 +714,220 @@ ${formData.description}`;
                       <ImageUploader value={settings.favicon_url} onChange={val => setSettings({...settings, favicon_url:val})} placeholder="https://..." />
                       <p className="text-xs text-gray-600 mt-1">Ícone que aparece na aba do navegador.</p>
                     </Field>
+                  </div>
+                </div>
+
+                <div className="bg-black/40 border border-white/10 rounded-2xl p-6 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-200 uppercase tracking-wider flex items-center gap-2">
+                        <CreditCard size={18} className="text-primary" /> Gateways de Pagamento
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-0.5">Selecione qual gateway está ativo para processar pagamentos de compras e recargas.</p>
+                    </div>
+                  </div>
+
+                  {/* SELETOR DE GATEWAY ATIVO */}
+                  <Field label="Gateway Ativo para Recebimento">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      {[
+                        { id: 'MERCADO_PAGO', name: 'Mercado Pago', desc: 'Pix Transparente', color: 'border-blue-500/50 bg-blue-500/10 text-blue-400' },
+                        { id: 'INFINITEPAY', name: 'InfinitePay', desc: 'Link Pix & Cartão', color: 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400' },
+                        { id: 'PUSHINPAY', name: 'PushinPay', desc: 'Pix Transparente', color: 'border-purple-500/50 bg-purple-500/10 text-purple-400' },
+                        { id: 'ASAAS', name: 'Asaas', desc: 'Pix Transparente', color: 'border-orange-500/50 bg-orange-500/10 text-orange-400' }
+                      ].map(gw => {
+                        const isSelected = (settings.gateway_active || 'MERCADO_PAGO').toUpperCase() === gw.id;
+                        return (
+                          <button
+                            type="button"
+                            key={gw.id}
+                            onClick={() => setSettings({ ...settings, gateway_active: gw.id })}
+                            className={`p-3 rounded-xl border text-left transition-all relative ${
+                              isSelected 
+                                ? `${gw.color} shadow-lg ring-1 ring-primary` 
+                                : 'border-white/10 bg-black/20 hover:border-white/20 text-gray-400'
+                            }`}
+                          >
+                            {isSelected && (
+                              <span className="absolute top-2 right-2 flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                              </span>
+                            )}
+                            <div className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-300'}`}>{gw.name}</div>
+                            <div className="text-[10px] text-gray-500 mt-0.5">{gw.desc}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Field>
+
+                  {/* CREDENCIAIS DOS GATEWAYS */}
+                  <div className="space-y-4 pt-3 border-t border-white/5">
+                    
+                    {/* 1. MERCADO PAGO */}
+                    <div className={`p-4 rounded-xl border transition-all ${
+                      (settings.gateway_active || 'MERCADO_PAGO').toUpperCase() === 'MERCADO_PAGO'
+                        ? 'border-blue-500/30 bg-blue-500/5'
+                        : 'border-white/5 bg-black/20 opacity-80'
+                    }`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
+                          <h4 className="text-xs font-bold text-white uppercase tracking-wider">Mercado Pago</h4>
+                        </div>
+                        <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-bold">Pix Transparente</span>
+                      </div>
+                      <Field label="Access Token (Produção)">
+                        <input
+                          type="password"
+                          value={settings.mp_access_token || ''}
+                          onChange={e => setSettings({ ...settings, mp_access_token: e.target.value })}
+                          placeholder="APP_USR-..."
+                          className={inp}
+                        />
+                      </Field>
+                      <div className="mt-3 p-2.5 bg-black/40 rounded-lg border border-white/5 flex items-center justify-between gap-2">
+                        <div className="overflow-hidden">
+                          <div className="text-[10px] text-gray-500 uppercase font-bold">Webhook URL (Mercado Pago):</div>
+                          <div className="text-xs text-gray-300 font-mono truncate">https://backend-pink-one-92.vercel.app/api/webhook/mercadopago</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard('https://backend-pink-one-92.vercel.app/api/webhook/mercadopago', 'mp')}
+                          className="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1 shrink-0 transition-colors"
+                        >
+                          {copiedWebhook === 'mp' ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+                          {copiedWebhook === 'mp' ? 'Copiado!' : 'Copiar'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 2. INFINITEPAY */}
+                    <div className={`p-4 rounded-xl border transition-all ${
+                      (settings.gateway_active || 'MERCADO_PAGO').toUpperCase() === 'INFINITEPAY'
+                        ? 'border-emerald-500/30 bg-emerald-500/5'
+                        : 'border-white/5 bg-black/20 opacity-80'
+                    }`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                          <h4 className="text-xs font-bold text-white uppercase tracking-wider">InfinitePay</h4>
+                        </div>
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-bold">Link de Cobrança</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <Field label="Handle / Tag da Loja">
+                          <input
+                            type="text"
+                            value={settings.infinitepay_handle || ''}
+                            onChange={e => setSettings({ ...settings, infinitepay_handle: e.target.value })}
+                            placeholder="ex: rdgdigital"
+                            className={inp}
+                          />
+                        </Field>
+                        <Field label="API Key (Opcional)">
+                          <input
+                            type="password"
+                            value={settings.infinitepay_api_key || ''}
+                            onChange={e => setSettings({ ...settings, infinitepay_api_key: e.target.value })}
+                            placeholder="Token JWT ou Chave API"
+                            className={inp}
+                          />
+                        </Field>
+                      </div>
+                      <div className="mt-3 p-2.5 bg-black/40 rounded-lg border border-white/5 flex items-center justify-between gap-2">
+                        <div className="overflow-hidden">
+                          <div className="text-[10px] text-gray-500 uppercase font-bold">Webhook URL (InfinitePay):</div>
+                          <div className="text-xs text-gray-300 font-mono truncate">https://backend-pink-one-92.vercel.app/api/webhook/infinitepay</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard('https://backend-pink-one-92.vercel.app/api/webhook/infinitepay', 'ip')}
+                          className="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1 shrink-0 transition-colors"
+                        >
+                          {copiedWebhook === 'ip' ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+                          {copiedWebhook === 'ip' ? 'Copiado!' : 'Copiar'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 3. PUSHINPAY */}
+                    <div className={`p-4 rounded-xl border transition-all ${
+                      (settings.gateway_active || 'MERCADO_PAGO').toUpperCase() === 'PUSHINPAY'
+                        ? 'border-purple-500/30 bg-purple-500/5'
+                        : 'border-white/5 bg-black/20 opacity-80'
+                    }`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
+                          <h4 className="text-xs font-bold text-white uppercase tracking-wider">PushinPay</h4>
+                        </div>
+                        <span className="text-[10px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded font-bold">Pix Transparente</span>
+                      </div>
+                      <Field label="Token de API (Bearer)">
+                        <input
+                          type="password"
+                          value={settings.pushinpay_token || ''}
+                          onChange={e => setSettings({ ...settings, pushinpay_token: e.target.value })}
+                          placeholder="Chave/Token PushinPay"
+                          className={inp}
+                        />
+                      </Field>
+                      <div className="mt-3 p-2.5 bg-black/40 rounded-lg border border-white/5 flex items-center justify-between gap-2">
+                        <div className="overflow-hidden">
+                          <div className="text-[10px] text-gray-500 uppercase font-bold">Webhook URL (PushinPay):</div>
+                          <div className="text-xs text-gray-300 font-mono truncate">https://backend-pink-one-92.vercel.app/api/webhook/pushinpay</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard('https://backend-pink-one-92.vercel.app/api/webhook/pushinpay', 'pp')}
+                          className="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1 shrink-0 transition-colors"
+                        >
+                          {copiedWebhook === 'pp' ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+                          {copiedWebhook === 'pp' ? 'Copiado!' : 'Copiar'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 4. ASAAS */}
+                    <div className={`p-4 rounded-xl border transition-all ${
+                      (settings.gateway_active || 'MERCADO_PAGO').toUpperCase() === 'ASAAS'
+                        ? 'border-orange-500/30 bg-orange-500/5'
+                        : 'border-white/5 bg-black/20 opacity-80'
+                    }`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-orange-400"></span>
+                          <h4 className="text-xs font-bold text-white uppercase tracking-wider">Asaas</h4>
+                        </div>
+                        <span className="text-[10px] bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded font-bold">Pix Transparente</span>
+                      </div>
+                      <Field label="API Key ($aact_...)">
+                        <input
+                          type="password"
+                          value={settings.asaas_api_key || ''}
+                          onChange={e => setSettings({ ...settings, asaas_api_key: e.target.value })}
+                          placeholder="$aact_YTU5YTE0M2M6..."
+                          className={inp}
+                        />
+                      </Field>
+                      <div className="mt-3 p-2.5 bg-black/40 rounded-lg border border-white/5 flex items-center justify-between gap-2">
+                        <div className="overflow-hidden">
+                          <div className="text-[10px] text-gray-500 uppercase font-bold">Webhook URL (Asaas):</div>
+                          <div className="text-xs text-gray-300 font-mono truncate">https://backend-pink-one-92.vercel.app/api/webhook/asaas</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard('https://backend-pink-one-92.vercel.app/api/webhook/asaas', 'as')}
+                          className="bg-white/10 hover:bg-white/20 text-white px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1 shrink-0 transition-colors"
+                        >
+                          {copiedWebhook === 'as' ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+                          {copiedWebhook === 'as' ? 'Copiado!' : 'Copiar'}
+                        </button>
+                      </div>
+                    </div>
+
                   </div>
                 </div>
 

@@ -4,6 +4,7 @@ import axios from 'axios';
 import { CartContext } from '../contexts/CartContext';
 import { AuthContext } from '../contexts/AuthContext';
 import { ShieldCheck, Lock, Wallet } from 'lucide-react';
+import PixModal from '../components/PixModal';
 
 export default function Checkout() {
   const { cart, cartTotal, clearCart, appliedCoupon, setAppliedCoupon, discountAmount, cartTotalWithDiscount } = useContext(CartContext);
@@ -18,10 +19,20 @@ export default function Checkout() {
   const [success, setSuccess] = useState(false);
   const [couponInput, setCouponInput] = useState('');
 
+  // Estado do Modal Pix
+  const [pixModal, setPixModal] = useState({
+    isOpen: false,
+    orderId: null,
+    amount: 0,
+    qrCode: '',
+    qrCodeBase64: '',
+    paymentUrl: ''
+  });
+
   const handleApplyCoupon = async () => {
     if (!couponInput) return;
     try {
-      const res = await axios.post('https://streaming-store-api.onrender.com/api/coupons/validate', { code: couponInput });
+      const res = await axios.post('https://backend-pink-one-92.vercel.app/api/coupons/validate', { code: couponInput });
       setAppliedCoupon(res.data);
       setError('');
     } catch (err) {
@@ -30,13 +41,13 @@ export default function Checkout() {
   };
 
   useEffect(() => {
-    if (cart.length === 0 && !success) {
+    if (cart.length === 0 && !success && !pixModal.isOpen) {
       navigate('/');
     }
     if (user) {
       if (!name) setName(user.name);
     }
-  }, [cart, navigate, success, user, name]);
+  }, [cart, navigate, success, user, name, pixModal.isOpen]);
 
   const handleCheckout = async (e) => {
     e.preventDefault();
@@ -53,7 +64,7 @@ export default function Checkout() {
         quantity: c.quantity 
       }));
 
-      const res = await axios.post('https://streaming-store-api.onrender.com/api/checkout', {
+      const res = await axios.post('https://backend-pink-one-92.vercel.app/api/checkout', {
         customerName: name,
         customerWhatsapp: whatsapp,
         cartItems,
@@ -61,20 +72,28 @@ export default function Checkout() {
         couponCode: appliedCoupon ? appliedCoupon.code : null
       }, { headers });
 
-      clearCart();
-
       if (res.data.fullyPaidWithWallet) {
+        clearCart();
         if (user && setUser) {
           setUser(prev => ({ ...prev, walletBalance: prev.walletBalance - cartTotalWithDiscount }));
         }
         setSuccess(true);
         setLoading(false);
-        // Redirecionamento automático após 2 segundos
         setTimeout(() => {
           navigate('/dashboard');
         }, 2000);
-      } else {
-        // Redireciona para o link de pagamento da InfinitePay
+      } else if (res.data.paymentType === 'PIX') {
+        setLoading(false);
+        setPixModal({
+          isOpen: true,
+          orderId: res.data.orderId,
+          amount: remainingToPay(),
+          qrCode: res.data.qrCode,
+          qrCodeBase64: res.data.qrCodeBase64,
+          paymentUrl: res.data.paymentUrl
+        });
+      } else if (res.data.paymentUrl) {
+        clearCart();
         window.location.href = res.data.paymentUrl;
       }
     } catch (err) {
@@ -82,6 +101,12 @@ export default function Checkout() {
       setError(err.response?.data?.error || 'Erro ao processar pagamento. Tente novamente.');
       setLoading(false);
     }
+  };
+
+  const onPixPaidSuccess = () => {
+    clearCart();
+    setPixModal(prev => ({ ...prev, isOpen: false }));
+    navigate('/dashboard');
   };
 
   const remainingToPay = () => {
@@ -259,6 +284,18 @@ export default function Checkout() {
         </div>
 
       </div>
+
+      {/* MODAL PIX TRANSPARENTE MULTI-GATEWAY */}
+      <PixModal
+        isOpen={pixModal.isOpen}
+        onClose={() => setPixModal(prev => ({ ...prev, isOpen: false }))}
+        orderId={pixModal.orderId}
+        amount={pixModal.amount}
+        qrCode={pixModal.qrCode}
+        qrCodeBase64={pixModal.qrCodeBase64}
+        paymentUrl={pixModal.paymentUrl}
+        onPaidSuccess={onPixPaidSuccess}
+      />
     </div>
   );
 }

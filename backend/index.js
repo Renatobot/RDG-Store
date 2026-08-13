@@ -554,11 +554,197 @@ const processAffiliateReward = async (userId, pricePaid) => {
 };
 
 // ==========================================
-// CHECKOUT & INFINITEPAY
+// HELPERS MULTI-GATEWAYS DE PAGAMENTO
+// ==========================================
+const getSetting = async (key, fallback = '') => {
+  try {
+    const s = await prisma.setting.findUnique({ where: { key } });
+    if (s && s.value) return s.value;
+  } catch(e) {}
+  return process.env[key.toUpperCase()] || fallback;
+};
+
+const handlePaymentSuccess = async (orderNsu, transactionId = null, paidAmount = null) => {
+  try {
+    const nsu = (orderNsu || '').toString();
+    console.log(`[PAGAMENTO RECEBIDO] Processando NSU: ${nsu}`);
+
+    if (nsu.startsWith('RECHARGE_')) {
+      const parts = nsu.split('_');
+      const userId = parseInt(parts[1]);
+      const amount = parseInt(parts[2]); // Em centavos
+
+      if (userId && amount) {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { walletBalance: { increment: amount } }
+        });
+        console.log(`[RECARGA CONCLUÍDA] ID Usuário: ${userId} - R$ ${amount/100}`);
+      }
+      return { success: true, type: 'RECHARGE' };
+    }
+
+    const orderId = parseInt(nsu);
+    if (orderId) {
+      const order = await prisma.order.findUnique({ where: { id: orderId } });
+      if (!order) return { success: false, error: 'Pedido não encontrado' };
+
+      if (order.status !== 'ENTREGUE' && order.status !== 'PAGO') {
+        const updated = await prisma.order.update({
+          where: { id: orderId },
+          data: {
+            status: 'ENTREGUE',
+            paidAt: new Date(),
+            deliveredAt: new Date(),
+            transactionNsu: transactionId || order.transactionNsu
+          }
+        });
+        await autoDeliverOrder(orderId);
+
+        if (updated.userId) {
+          await processAffiliateReward(updated.userId, updated.pricePaid);
+        }
+        console.log(`[PEDIDO CONCLUÍDO & ENTREGUE] Pedido #${orderId}`);
+      }
+      return { success: true, type: 'ORDER', orderId };
+    }
+  } catch (err) {
+    console.error('[ERRO NO PROCESSAMENTO DE PAGAMENTO]:', err);
+    return { success: false, error: err.message };
+  }
+};
+
+// 1. Mercado Pago (Pix Transparente)
+const createMercadoPagoPayment = async ({ orderNsu, amountInCents, description, customerName, customerEmail, webhookUrl, accessToken }) => {
+  const amountInReais = parseFloat((amountInCents / 100).toFixed(2));
+  const payload = {
+    transaction_amount: amountInReais,
+    description: description || `Pedido #${orderNsu}`,
+    payment_method_id: 'pix',
+    payer: {
+      email: customerEmail || 'cliente@rdgdigital.com.br',
+      first_name: customerName || 'Cliente'
+    },
+    notification_url: webhookUrl,
+    external_reference: orderNsu.toString()
+  };
+
+  const res = await axios.post('https://api.mercadopago.com/v1/payments', payload, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'X-Idempotency-Key': `MP_${orderNsu}_${Date.now()}`
+    }
+  });
+
+  const txData = res.data.point_of_interaction?.transaction_data;
+  return {
+    paymentType: 'PIX',
+    gateway: 'MERCADO_PAGO',
+    qrCode: txData?.qr_code || '',
+    qrCodeBase64: txData?.qr_code_base64 || '',
+    paymentUrl: txData?.ticket_url || null,
+    paymentId: res.data.id?.toString()
+  };
+};
+
+// 2. PushinPay (Pix Transparente)
+const createPushinPayPayment = async ({ orderNsu, amountInCents, webhookUrl, token }) => {
+  const payload = {
+    value: amountInCents,
+    webhook_url: webhookUrl,
+    external_reference: orderNsu.toString()
+  };
+
+  const res = await axios.post('https://api.pushinpay.com.br/api/pix/cashIn', payload, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    }
+  });
+
+  return {
+    paymentType: 'PIX',
+    gateway: 'PUSHINPAY',
+    qrCode: res.data.qr_code || res.data.pix_copia_e_cola || '',
+    qrCodeBase64: res.data.qr_code_base64 || '',
+    paymentUrl: null,
+    paymentId: res.data.id?.toString()
+  };
+};
+
+// 3. Asaas (Pix Transparente)
+const createAsaasPayment = async ({ orderNsu, amountInCents, description, customerName, webhookUrl, apiKey }) => {
+  const amountInReais = parseFloat((amountInCents / 100).toFixed(2));
+  
+  // Cria cobrança PIX
+  const chargeRes = await axios.post('https://api.asaas.com/v3/payments', {
+    billingType: 'PIX',
+    value: amountInReais,
+    description: description || `Pedido #${orderNsu}`,
+    externalReference: orderNsu.toString(),
+    dueDate: new Date(Date.now() + 24*60*60*1000).toISOString().split('T')[0]
+  }, {
+    headers: {
+      'access_token': apiKey,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  const paymentId = chargeRes.data.id;
+
+  // Busca QR Code Pix
+  const qrRes = await axios.get(`https://api.asaas.com/v3/payments/${paymentId}/pixQrCode`, {
+    headers: { 'access_token': apiKey }
+  });
+
+  return {
+    paymentType: 'PIX',
+    gateway: 'ASAAS',
+    qrCode: qrRes.data.payload || '',
+    qrCodeBase64: qrRes.data.encodedImage || '',
+    paymentUrl: chargeRes.data.invoiceUrl || null,
+    paymentId: paymentId?.toString()
+  };
+};
+
+// 4. InfinitePay (Checkout Link)
+const createInfinitePayPayment = async ({ orderNsu, amountInCents, description, customerName, customerWhatsapp, webhookUrl, handle, apiKey }) => {
+  const payload = {
+    handle: handle,
+    order_nsu: orderNsu.toString(),
+    webhook_url: webhookUrl,
+    items: [
+      {
+        quantity: 1,
+        price: amountInCents,
+        description: description || `Pedido #${orderNsu}`
+      }
+    ],
+    customer: {
+      name: customerName || 'Cliente',
+      phone_number: customerWhatsapp || '11999999999'
+    }
+  };
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+  const res = await axios.post('https://api.checkout.infinitepay.io/links', payload, { headers });
+  return {
+    paymentType: 'LINK',
+    gateway: 'INFINITEPAY',
+    paymentUrl: res.data.url,
+    paymentId: orderNsu.toString()
+  };
+};
+
+// ==========================================
+// CHECKOUT MULTI-GATEWAY
 // ==========================================
 app.post('/api/checkout', async (req, res) => {
-  // cartItems = array de { productId, quantity }
-  const { customerName, customerWhatsapp, cartItems, useWallet, couponCode } = req.body;
+  const { customerName, customerWhatsapp, customerEmail, cartItems, useWallet, couponCode } = req.body;
   
   if (!cartItems || cartItems.length === 0) {
     return res.status(400).json({ error: 'Carrinho vazio' });
@@ -613,7 +799,7 @@ app.post('/api/checkout', async (req, res) => {
     
     const totalPriceWithDiscount = Math.max(0, totalPrice - discountAmount);
 
-    // 2. Tratar Saldo da Carteira (Wallet) e Validar Usuário
+    // 2. Tratar Saldo da Carteira (Wallet)
     let walletUsed = 0;
     let remainingToPay = totalPriceWithDiscount;
 
@@ -639,8 +825,8 @@ app.post('/api/checkout', async (req, res) => {
     const order = await prisma.order.create({
       data: {
         userId,
-        customerName,
-        customerWhatsapp,
+        customerName: customerName || 'Cliente',
+        customerWhatsapp: customerWhatsapp || '',
         pricePaid: remainingToPay, 
         walletUsed,
         status: orderStatus,
@@ -654,11 +840,9 @@ app.post('/api/checkout', async (req, res) => {
 
     if (orderStatus === 'ENTREGUE') {
       await autoDeliverOrder(order.id);
-      // Processar recompensa para compra 100% via carteira
       await processAffiliateReward(userId, totalPriceWithDiscount);
     }
 
-    // Subtrair saldo da carteira se foi usado
     if (walletUsed > 0 && userId) {
       await prisma.user.update({
         where: { id: userId },
@@ -666,55 +850,84 @@ app.post('/api/checkout', async (req, res) => {
       });
     }
 
-    // Se o saldo cobriu 100% da compra, não precisa gerar Pix na InfinitePay
+    // Se 100% pago com saldo
     if (remainingToPay === 0) {
-      return res.json({ orderId: order.id, paymentUrl: null, fullyPaidWithWallet: true });
+      return res.json({ 
+        orderId: order.id, 
+        fullyPaidWithWallet: true,
+        paymentType: 'WALLET'
+      });
     }
 
-    // 4. Gerar Link na InfinitePay para o saldo restante
-    const webhookUrl = `${process.env.PUBLIC_URL || 'http://localhost:3001'}/api/webhook/infinitepay`;
-    
-    const infinitePayItems = orderItemsData.map((item, index) => ({
-      description: `Item #${index+1} (Pedido #${order.id})`,
-      price: index === 0 ? item.price * item.quantity - walletUsed : item.price * item.quantity, 
-      quantity: 1
-    }));
-    // ^ Se o walletUsed foi aplicado, descontamos do primeiro item só na descrição pra InfinitePay fechar a conta (a API deles pede o preço exato).
-    // Alternativa mais simples: mandar um item único "Carrinho de Compras"
-    
-    const payload = {
-      handle: process.env.INFINITEPAY_HANDLE,
-      order_nsu: order.id.toString(),
-      webhook_url: webhookUrl,
-      items: [
-        {
-          quantity: 1,
-          price: remainingToPay,
-          description: `Pedido #${order.id} - ${orderItemsData.length} item(s)`
-        }
-      ],
-      customer: {
-        name: customerName,
-        phone_number: customerWhatsapp
-      }
-    };
+    // 4. Gerar Pagamento no Gateway Ativo
+    const gatewayActive = (await getSetting('gateway_active', 'MERCADO_PAGO')).toUpperCase();
+    const serverUrl = process.env.PUBLIC_URL || 'https://backend-pink-one-92.vercel.app';
+    let paymentResult = null;
 
-    const response = await axios.post('https://api.checkout.infinitepay.io/links', payload, {
-      headers: {
-        'Authorization': `Bearer ${process.env.INFINITEPAY_API_KEY}`,
-        'Content-Type': 'application/json'
-      }
+    if (gatewayActive === 'MERCADO_PAGO') {
+      const mpToken = await getSetting('mp_access_token');
+      if (!mpToken) throw new Error('Mercado Pago não configurado no painel.');
+      paymentResult = await createMercadoPagoPayment({
+        orderNsu: order.id,
+        amountInCents: remainingToPay,
+        description: `Pedido #${order.id} - ${orderItemsData.length} item(s)`,
+        customerName,
+        customerEmail,
+        webhookUrl: `${serverUrl}/api/webhook/mercadopago`,
+        accessToken: mpToken
+      });
+    } else if (gatewayActive === 'PUSHINPAY') {
+      const pushinToken = await getSetting('pushinpay_token');
+      if (!pushinToken) throw new Error('PushinPay não configurado no painel.');
+      paymentResult = await createPushinPayPayment({
+        orderNsu: order.id,
+        amountInCents: remainingToPay,
+        webhookUrl: `${serverUrl}/api/webhook/pushinpay`,
+        token: pushinToken
+      });
+    } else if (gatewayActive === 'ASAAS') {
+      const asaasKey = await getSetting('asaas_api_key');
+      if (!asaasKey) throw new Error('Asaas não configurado no painel.');
+      paymentResult = await createAsaasPayment({
+        orderNsu: order.id,
+        amountInCents: remainingToPay,
+        description: `Pedido #${order.id}`,
+        customerName,
+        webhookUrl: `${serverUrl}/api/webhook/asaas`,
+        apiKey: asaasKey
+      });
+    } else if (gatewayActive === 'INFINITEPAY') {
+      const handle = await getSetting('infinitepay_handle');
+      const apiKey = await getSetting('infinitepay_api_key');
+      if (!handle) throw new Error('Handle da InfinitePay não configurado no painel.');
+      paymentResult = await createInfinitePayPayment({
+        orderNsu: order.id,
+        amountInCents: remainingToPay,
+        description: `Pedido #${order.id} - ${orderItemsData.length} item(s)`,
+        customerName,
+        customerWhatsapp,
+        webhookUrl: `${serverUrl}/api/webhook/infinitepay`,
+        handle,
+        apiKey
+      });
+    } else {
+      throw new Error(`Gateway '${gatewayActive}' não suportado.`);
+    }
+
+    res.json({
+      orderId: order.id,
+      fullyPaidWithWallet: false,
+      ...paymentResult
     });
 
-    res.json({ orderId: order.id, paymentUrl: response.data.url, fullyPaidWithWallet: false });
   } catch (error) {
-    console.error("Erro ao gerar checkout:", error?.response?.data || error.message);
-    res.status(500).json({ error: error.message || 'Erro ao gerar checkout na InfinitePay' });
+    console.error("Erro no checkout:", error?.response?.data || error.message);
+    res.status(500).json({ error: error?.response?.data?.message || error.message || 'Erro ao processar pagamento.' });
   }
 });
 
 // ==========================================
-// RECARGA DE SALDO INFINITEPAY
+// RECARGA DE SALDO MULTI-GATEWAY
 // ==========================================
 app.post('/api/wallet/recharge', async (req, res) => {
   const token = req.headers['authorization'];
@@ -732,86 +945,158 @@ app.post('/api/wallet/recharge', async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
-    const webhookUrl = `${process.env.PUBLIC_URL || 'http://localhost:3001'}/api/webhook/infinitepay`;
     const order_nsu = `RECHARGE_${userId}_${amount}_${Date.now()}`;
+    const gatewayActive = (await getSetting('gateway_active', 'MERCADO_PAGO')).toUpperCase();
+    const serverUrl = process.env.PUBLIC_URL || 'https://backend-pink-one-92.vercel.app';
+    let paymentResult = null;
 
-    const payload = {
-      handle: process.env.INFINITEPAY_HANDLE,
-      order_nsu: order_nsu,
-      webhook_url: webhookUrl,
-      items: [
-        {
-          quantity: 1,
-          price: amount,
-          description: `Recarga de Saldo - ${user.name}`
-        }
-      ],
-      customer: {
-        name: user.name,
-        phone_number: '11999999999' // Valor genérico já que não armazenamos o número do usuário no DB principal
-      }
-    };
+    if (gatewayActive === 'MERCADO_PAGO') {
+      const mpToken = await getSetting('mp_access_token');
+      if (!mpToken) throw new Error('Mercado Pago não configurado.');
+      paymentResult = await createMercadoPagoPayment({
+        orderNsu: order_nsu,
+        amountInCents: amount,
+        description: `Recarga de Saldo - ${user.name}`,
+        customerName: user.name,
+        customerEmail: user.email,
+        webhookUrl: `${serverUrl}/api/webhook/mercadopago`,
+        accessToken: mpToken
+      });
+    } else if (gatewayActive === 'PUSHINPAY') {
+      const pushinToken = await getSetting('pushinpay_token');
+      if (!pushinToken) throw new Error('PushinPay não configurado.');
+      paymentResult = await createPushinPayPayment({
+        orderNsu: order_nsu,
+        amountInCents: amount,
+        webhookUrl: `${serverUrl}/api/webhook/pushinpay`,
+        token: pushinToken
+      });
+    } else if (gatewayActive === 'ASAAS') {
+      const asaasKey = await getSetting('asaas_api_key');
+      if (!asaasKey) throw new Error('Asaas não configurado.');
+      paymentResult = await createAsaasPayment({
+        orderNsu: order_nsu,
+        amountInCents: amount,
+        description: `Recarga de Saldo - ${user.name}`,
+        customerName: user.name,
+        webhookUrl: `${serverUrl}/api/webhook/asaas`,
+        apiKey: asaasKey
+      });
+    } else if (gatewayActive === 'INFINITEPAY') {
+      const handle = await getSetting('infinitepay_handle');
+      const apiKey = await getSetting('infinitepay_api_key');
+      if (!handle) throw new Error('InfinitePay não configurado.');
+      paymentResult = await createInfinitePayPayment({
+        orderNsu: order_nsu,
+        amountInCents: amount,
+        description: `Recarga de Saldo - ${user.name}`,
+        customerName: user.name,
+        customerWhatsapp: '11999999999',
+        webhookUrl: `${serverUrl}/api/webhook/infinitepay`,
+        handle,
+        apiKey
+      });
+    }
 
-    const response = await axios.post('https://api.checkout.infinitepay.io/links', payload, {
-      headers: {
-        'Authorization': `Bearer ${process.env.INFINITEPAY_API_KEY}`,
-        'Content-Type': 'application/json'
-      }
+    res.json({
+      orderNsu: order_nsu,
+      ...paymentResult
     });
-
-    res.json({ paymentUrl: response.data.url });
   } catch (error) {
-    console.error("Erro ao gerar recarga:", error?.response?.data || error.message);
-    res.status(500).json({ error: error.message || 'Erro ao gerar recarga na InfinitePay' });
+    console.error("Erro na recarga:", error?.response?.data || error.message);
+    res.status(500).json({ error: error?.response?.data?.message || error.message || 'Erro ao gerar recarga.' });
   }
 });
 
 // ==========================================
-// WEBHOOK INFINITEPAY
+// STATUS DO PEDIDO / CONSULTA EM TEMPO REAL
 // ==========================================
+app.get('/api/orders/:id/status', async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, status: true, paidAt: true, deliveredAt: true }
+    });
+    if (!order) return res.status(404).json({ error: 'Pedido não encontrado' });
+    res.json({
+      id: order.id,
+      status: order.status,
+      isPaid: order.status === 'PAGO' || order.status === 'ENTREGUE'
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Erro ao consultar status' });
+  }
+});
+
+// ==========================================
+// WEBHOOKS MULTI-GATEWAYS
+// ==========================================
+// 1. Mercado Pago Webhook
+app.post('/api/webhook/mercadopago', async (req, res) => {
+  try {
+    const queryId = req.query['data.id'] || req.query.id || req.body?.data?.id || req.body?.id;
+    const mpToken = await getSetting('mp_access_token');
+
+    if (queryId && mpToken) {
+      const mpRes = await axios.get(`https://api.mercadopago.com/v1/payments/${queryId}`, {
+        headers: { 'Authorization': `Bearer ${mpToken}` }
+      });
+      const payment = mpRes.data;
+      if (payment && payment.status === 'approved') {
+        await handlePaymentSuccess(payment.external_reference, payment.id?.toString(), payment.transaction_amount * 100);
+      }
+    }
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('Mercado Pago Webhook error:', err?.response?.data || err.message);
+    res.status(200).send('ACK');
+  }
+});
+
+// 2. PushinPay Webhook
+app.post('/api/webhook/pushinpay', async (req, res) => {
+  try {
+    const data = req.body;
+    if (data.status === 'paid' || data.status === 'approved' || data.status === 'PAID') {
+      const extRef = data.external_reference || data.custom_id;
+      await handlePaymentSuccess(extRef, data.id?.toString() || data.transaction_id, data.value);
+    }
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('PushinPay Webhook error:', err);
+    res.status(200).send('ACK');
+  }
+});
+
+// 3. Asaas Webhook
+app.post('/api/webhook/asaas', async (req, res) => {
+  try {
+    const { event, payment } = req.body;
+    if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
+      if (payment && payment.externalReference) {
+        await handlePaymentSuccess(payment.externalReference, payment.id, Math.round(payment.value * 100));
+      }
+    }
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('Asaas Webhook error:', err);
+    res.status(200).send('ACK');
+  }
+});
+
+// 4. InfinitePay Webhook
 app.post('/api/webhook/infinitepay', async (req, res) => {
   const data = req.body;
   try {
     const orderNsu = data.order_nsu ? data.order_nsu.toString() : '';
-
-    if (orderNsu.startsWith('RECHARGE_')) {
-      // É uma recarga de saldo: RECHARGE_{userId}_{amount}_{timestamp}
-      const parts = orderNsu.split('_');
-      const userId = parseInt(parts[1]);
-      const amount = parseInt(parts[2]); // Em centavos
-
-      if (userId && amount) {
-        await prisma.user.update({
-          where: { id: userId },
-          data: { walletBalance: { increment: amount } }
-        });
-        console.log(`Recarga de saldo via PIX efetuada com sucesso: ID ${userId} - R$ ${amount/100}`);
-      }
-      return res.status(200).send('OK');
-    }
-
-    const orderId = parseInt(orderNsu);
-    if (orderId) {
-      const order = await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          status: 'ENTREGUE', // Assim que paga, muda pra entregue para acionar o envio automático
-          paidAt: new Date(),
-          deliveredAt: new Date(),
-          transactionNsu: data.transaction_nsu
-        }
-      });
-      await autoDeliverOrder(orderId);
-      
-      // Processar recompensa para afiliado baseado no que foi pago via PIX/InfiniPay
-      if (order.userId) {
-        await processAffiliateReward(order.userId, order.pricePaid);
-      }
+    if (orderNsu) {
+      await handlePaymentSuccess(orderNsu, data.transaction_nsu, null);
     }
     res.status(200).send('OK');
   } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(200).send('Error but acknowledged');
+    console.error('InfinitePay Webhook error:', error);
+    res.status(200).send('ACK');
   }
 });
 

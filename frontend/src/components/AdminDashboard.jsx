@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { TrendingUp, ShoppingBag, Users, Clock, Award, DollarSign, BarChart2, Package } from 'lucide-react';
+import { API_BASE } from '../api';
 
 const fmt = (cents) => `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
 
@@ -47,7 +48,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get('https://streaming-store-api.onrender.com/api/stats')
+    axios.get(`${API_BASE}/api/stats`)
       .then(res => { setStats(res.data); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);

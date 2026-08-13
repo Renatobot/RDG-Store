@@ -8,6 +8,7 @@ import { ThemeContext } from '../contexts/ThemeContext';
 import { SettingsContext } from '../contexts/SettingsContext';
 import axios from 'axios';
 import ImageUploader from '../components/ImageUploader';
+import { API_BASE } from '../api';
 
 export default function Navbar({ onSearch }) {
   const { user, logout, setUser } = useContext(AuthContext);
@@ -40,7 +41,7 @@ export default function Navbar({ onSearch }) {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.put('https://streaming-store-api.onrender.com/api/users/me/profile', profileForm, {
+      const res = await axios.put(`${API_BASE}/api/users/me/profile`, profileForm, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUser(res.data.user);
@@ -55,7 +56,7 @@ export default function Navbar({ onSearch }) {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      await axios.put('https://streaming-store-api.onrender.com/api/users/me/password', passwordForm, {
+      await axios.put(`${API_BASE}/api/users/me/password`, passwordForm, {
         headers: { Authorization: `Bearer ${token}` }
       });
       alert('Senha alterada com sucesso!');
@@ -70,7 +71,7 @@ export default function Navbar({ onSearch }) {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.put('https://streaming-store-api.onrender.com/api/users/me/avatar', avatarForm, {
+      const res = await axios.put(`${API_BASE}/api/users/me/avatar`, avatarForm, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUser(res.data.user);

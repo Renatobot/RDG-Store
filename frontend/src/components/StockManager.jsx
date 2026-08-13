@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import axios from 'axios';
 import { PackagePlus, Trash2, Search, ChevronDown, ChevronUp, Package, CheckCircle, XCircle, Copy, Eye, EyeOff } from 'lucide-react';
+import { API_BASE } from '../api';
 
 export default function StockManager({ products, credentials, onSuccess }) {
   const [selectedProductId, setSelectedProductId] = useState('');
@@ -34,7 +35,7 @@ export default function StockManager({ products, credentials, onSuccess }) {
       const contentString = JSON.stringify(credObj);
       const contents = Array.from({ length: multiplier }).fill(contentString);
 
-      await axios.post('https://streaming-store-api.onrender.com/api/credentials', {
+      await axios.post(`${API_BASE}/api/credentials`, {
         productId: selectedProductId,
         variationId: hasVariations ? selectedVariationId : null,
         contents
@@ -52,7 +53,7 @@ export default function StockManager({ products, credentials, onSuccess }) {
   const handleDelete = async (id) => {
     if (!window.confirm('Excluir esta credencial?')) return;
     try {
-      await axios.delete(`https://streaming-store-api.onrender.com/api/credentials/${id}`);
+      await axios.delete(`${API_BASE}/api/credentials/${id}`);
       onSuccess();
     } catch (err) {
       alert('Erro ao excluir.');

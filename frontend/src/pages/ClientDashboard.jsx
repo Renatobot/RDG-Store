@@ -4,9 +4,11 @@ import { AuthContext } from '../contexts/AuthContext';
 import { SettingsContext } from '../contexts/SettingsContext';
 import { Navigate } from 'react-router-dom';
 import { Wallet, Package, Trophy, Clock, CheckCircle, Edit, Camera, Key, Star, ExternalLink, Link as LinkIcon, Plus } from 'lucide-react';
+import PixModal from '../components/PixModal';
+import { API_BASE } from '../api';
 
 export default function ClientDashboard() {
-  const { user, loading } = useContext(AuthContext);
+  const { user, setUser, loading } = useContext(AuthContext);
   const { settings } = useContext(SettingsContext);
   const [orders, setOrders] = useState([]);
   const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'affiliate'
@@ -23,17 +25,39 @@ export default function ClientDashboard() {
   const [rechargeAmount, setRechargeAmount] = useState('');
   const [isRecharging, setIsRecharging] = useState(false);
 
+  // Pix Recharge Modal State
+  const [pixRechargeModal, setPixRechargeModal] = useState({
+    isOpen: false,
+    orderNsu: '',
+    amount: 0,
+    qrCode: '',
+    qrCodeBase64: '',
+    paymentUrl: ''
+  });
+
+  const fetchUserData = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const headers = { Authorization: `Bearer ${token}` };
+      const [ordersRes, affRes, meRes] = await Promise.all([
+        axios.get(`${API_BASE}/api/orders`, { headers }),
+        axios.get(`${API_BASE}/api/users/me/affiliate`, { headers }),
+        axios.get(`${API_BASE}/api/auth/me`, { headers })
+      ]);
+      setOrders(ordersRes.data);
+      setAffiliateData(affRes.data);
+      if (meRes.data && setUser) setUser(meRes.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     if (user) {
-      axios.get('https://streaming-store-api.onrender.com/api/orders', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      }).then(res => setOrders(res.data));
-
-      axios.get('https://streaming-store-api.onrender.com/api/users/me/affiliate', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      }).then(res => setAffiliateData(res.data));
+      fetchUserData();
     }
-  }, [user]);
+  }, []);
 
   const handleCopyLink = () => {
     if (affiliateData) {
@@ -48,7 +72,7 @@ export default function ClientDashboard() {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`https://streaming-store-api.onrender.com/api/reviews/${reviewProduct.id}`, reviewForm, {
+      await axios.post(`${API_BASE}/api/reviews/${reviewProduct.id}`, reviewForm, {
         headers: { Authorization: `Bearer ${token}` }
       });
       alert('Avaliação enviada com sucesso! Agradecemos o seu feedback.');
@@ -67,10 +91,22 @@ export default function ClientDashboard() {
     
     setIsRecharging(true);
     try {
-      const res = await axios.post('https://streaming-store-api.onrender.com/api/wallet/recharge', { amount: parseInt(val * 100) }, {
+      const amountInCents = parseInt(Math.round(val * 100));
+      const res = await axios.post(`${API_BASE}/api/wallet/recharge`, { amount: amountInCents }, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
-      if (res.data.paymentUrl) {
+
+      if (res.data.paymentType === 'PIX') {
+        setRechargeModalOpen(false);
+        setPixRechargeModal({
+          isOpen: true,
+          amount: amountInCents,
+          qrCode: res.data.qrCode,
+          qrCodeBase64: res.data.qrCodeBase64,
+          paymentUrl: res.data.paymentUrl,
+          orderNsu: res.data.orderNsu
+        });
+      } else if (res.data.paymentUrl) {
         window.location.href = res.data.paymentUrl;
       }
     } catch (err) {
@@ -78,6 +114,11 @@ export default function ClientDashboard() {
     } finally {
       setIsRecharging(false);
     }
+  };
+
+  const onPixRechargeSuccess = () => {
+    setPixRechargeModal(prev => ({ ...prev, isOpen: false }));
+    fetchUserData();
   };
 
   if (loading) return <div className="p-8 text-center text-white">Carregando...</div>;
@@ -449,12 +490,24 @@ export default function ClientDashboard() {
                 disabled={isRecharging}
                 className="w-full bg-primary hover:bg-primary/80 text-white font-bold py-3 rounded-lg shadow-lg shadow-primary/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                {isRecharging ? 'Gerando Pagamento...' : 'Gerar Pix (InfinitePay)'}
+                {isRecharging ? 'Gerando Pagamento...' : 'Gerar Pagamento Pix'}
               </button>
             </form>
           </div>
         </div>
       )}
+
+      {/* MODAL PIX TRANSPARENTE MULTI-GATEWAY PARA RECARGA */}
+      <PixModal
+        isOpen={pixRechargeModal.isOpen}
+        onClose={() => setPixRechargeModal(prev => ({ ...prev, isOpen: false }))}
+        amount={pixRechargeModal.amount}
+        qrCode={pixRechargeModal.qrCode}
+        qrCodeBase64={pixRechargeModal.qrCodeBase64}
+        paymentUrl={pixRechargeModal.paymentUrl}
+        isRecharge={true}
+        onPaidSuccess={onPixRechargeSuccess}
+      />
 
     </div>
   );

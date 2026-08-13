@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Users, TrendingUp, ShoppingBag, Wallet, Copy, CheckCircle, ChevronDown, ChevronUp, Search, Link2, ExternalLink } from 'lucide-react';
+import { API_BASE } from '../api';
 
 const fmtR = c => `R$ ${(c / 100).toFixed(2).replace('.', ',')}`;
 const inp = "w-full bg-black/60 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-gray-600 focus:outline-none focus:border-primary transition-colors";
@@ -21,7 +22,7 @@ export default function AffiliatesPanel() {
   const fetchAffiliates = async () => {
     setLoading(true);
     try {
-      const res = await axios.get('https://streaming-store-api.onrender.com/api/admin/affiliates');
+      const res = await axios.get(`${API_BASE}/api/admin/affiliates`);
       setAffiliates(res.data);
     } catch (err) {
       setError('Erro ao carregar afiliados.');

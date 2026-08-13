@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { UploadCloud, Loader2, Image as ImageIcon } from 'lucide-react';
 import { compressImageToWebp } from '../utils/imageCompressor';
+import { API_BASE } from '../api';
 
 export default function ImageUploader({ label, value, onChange, placeholder, className = '' }) {
   const [isUploading, setIsUploading] = useState(false);
@@ -19,7 +20,7 @@ export default function ImageUploader({ label, value, onChange, placeholder, cla
       const formData = new FormData();
       formData.append('image', webpFile);
       
-      const res = await axios.post('https://streaming-store-api.onrender.com/api/upload', formData, {
+      const res = await axios.post(`${API_BASE}/api/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       
