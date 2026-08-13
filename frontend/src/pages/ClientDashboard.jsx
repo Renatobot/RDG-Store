@@ -3,7 +3,7 @@ import axios from 'axios';
 import { AuthContext } from '../contexts/AuthContext';
 import { SettingsContext } from '../contexts/SettingsContext';
 import { Navigate } from 'react-router-dom';
-import { Wallet, Package, Trophy, Clock, CheckCircle, Edit, Camera, Key, Star, ExternalLink, Link as LinkIcon } from 'lucide-react';
+import { Wallet, Package, Trophy, Clock, CheckCircle, Edit, Camera, Key, Star, ExternalLink, Link as LinkIcon, Plus } from 'lucide-react';
 
 export default function ClientDashboard() {
   const { user, loading } = useContext(AuthContext);
@@ -17,6 +17,11 @@ export default function ClientDashboard() {
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewProduct, setReviewProduct] = useState(null);
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
+
+  // Recharge State
+  const [rechargeModalOpen, setRechargeModalOpen] = useState(false);
+  const [rechargeAmount, setRechargeAmount] = useState('');
+  const [isRecharging, setIsRecharging] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -54,6 +59,27 @@ export default function ClientDashboard() {
     }
   };
 
+  const handleRecharge = async (e) => {
+    e.preventDefault();
+    if (!rechargeAmount) return;
+    const val = parseFloat(rechargeAmount.replace(',', '.'));
+    if (isNaN(val) || val < 5) return alert('Valor mínimo de R$ 5,00');
+    
+    setIsRecharging(true);
+    try {
+      const res = await axios.post('https://streaming-store-api.onrender.com/api/wallet/recharge', { amount: parseInt(val * 100) }, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.data.paymentUrl) {
+        window.location.href = res.data.paymentUrl;
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || 'Erro ao gerar recarga.');
+    } finally {
+      setIsRecharging(false);
+    }
+  };
+
   if (loading) return <div className="p-8 text-center text-white">Carregando...</div>;
   if (!user) return <Navigate to="/login" />;
 
@@ -80,9 +106,16 @@ export default function ClientDashboard() {
             <h2 className="text-xl font-bold text-white mb-1">{user.name}</h2>
             <p className="text-sm text-gray-400 mb-6">{user.email}</p>
             
-            <div className="w-full bg-black/50 rounded-xl p-4 border border-white/5 mb-4">
-              <div className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-1">Saldo da Carteira</div>
-              <div className="text-3xl font-black text-primary">R$ {(user.walletBalance / 100).toFixed(2).replace('.', ',')}</div>
+            <div className="w-full bg-black/50 rounded-xl p-4 border border-white/5 mb-4 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-primary/20 blur-[50px] -mr-10 -mt-10 pointer-events-none"></div>
+              <div className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-1 relative z-10">Saldo da Carteira</div>
+              <div className="text-3xl font-black text-primary relative z-10 mb-3">R$ {(user.walletBalance / 100).toFixed(2).replace('.', ',')}</div>
+              <button 
+                onClick={() => setRechargeModalOpen(true)}
+                className="w-full bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30 font-bold text-xs py-2 rounded-lg transition-colors relative z-10 flex items-center justify-center gap-2"
+              >
+                <Plus size={14}/> Adicionar Saldo
+              </button>
             </div>
           </div>
           
@@ -377,6 +410,46 @@ export default function ClientDashboard() {
               
               <button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg shadow-lg shadow-yellow-500/30 transition-all">
                 Enviar Avaliação
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* RECHARGE MODAL */}
+      {rechargeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#1a1c23] border border-white/10 p-6 rounded-2xl w-full max-w-md relative animate-in fade-in zoom-in duration-200">
+            <button onClick={() => setRechargeModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white">
+              ✕
+            </button>
+            <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><Wallet size={20} className="text-primary"/> Adicionar Saldo</h3>
+            
+            <form onSubmit={handleRecharge} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Valor da Recarga (R$)</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">R$</span>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    min="5"
+                    value={rechargeAmount}
+                    onChange={e => setRechargeAmount(e.target.value)}
+                    className="w-full bg-black/50 border border-white/10 rounded-lg pl-10 pr-4 py-3 text-white font-bold focus:outline-none focus:border-primary"
+                    placeholder="0,00"
+                    required
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-2">Valor mínimo: R$ 5,00</p>
+              </div>
+              
+              <button 
+                type="submit" 
+                disabled={isRecharging}
+                className="w-full bg-primary hover:bg-primary/80 text-white font-bold py-3 rounded-lg shadow-lg shadow-primary/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isRecharging ? 'Gerando Pagamento...' : 'Gerar Pix (InfinitePay)'}
               </button>
             </form>
           </div>

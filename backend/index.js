@@ -692,12 +692,83 @@ app.post('/api/checkout', async (req, res) => {
 });
 
 // ==========================================
+// RECARGA DE SALDO INFINITEPAY
+// ==========================================
+app.post('/api/wallet/recharge', async (req, res) => {
+  const token = req.headers['authorization'];
+  if (!token) return res.status(401).json({ error: 'Não autorizado' });
+  
+  try {
+    const decoded = jwt.verify(token.replace('Bearer ', ''), process.env.JWT_SECRET || 'rdg_super_secret_key_2026');
+    const userId = decoded.id;
+    const { amount } = req.body; // Em centavos
+
+    if (!amount || amount < 500) {
+      return res.status(400).json({ error: 'O valor mínimo para recarga é de R$ 5,00.' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
+
+    const webhookUrl = `${process.env.PUBLIC_URL || 'http://localhost:3001'}/api/webhook/infinitepay`;
+    const order_nsu = `RECHARGE_${userId}_${amount}_${Date.now()}`;
+
+    const payload = {
+      handle: process.env.INFINITEPAY_HANDLE,
+      order_nsu: order_nsu,
+      webhook_url: webhookUrl,
+      items: [
+        {
+          quantity: 1,
+          price: amount,
+          description: `Recarga de Saldo - ${user.name}`
+        }
+      ],
+      customer: {
+        name: user.name,
+        phone_number: '11999999999' // Valor genérico já que não armazenamos o número do usuário no DB principal
+      }
+    };
+
+    const response = await axios.post('https://api.checkout.infinitepay.io/links', payload, {
+      headers: {
+        'Authorization': `Bearer ${process.env.INFINITEPAY_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    res.json({ paymentUrl: response.data.url });
+  } catch (error) {
+    console.error("Erro ao gerar recarga:", error?.response?.data || error.message);
+    res.status(500).json({ error: error.message || 'Erro ao gerar recarga na InfinitePay' });
+  }
+});
+
+// ==========================================
 // WEBHOOK INFINITEPAY
 // ==========================================
 app.post('/api/webhook/infinitepay', async (req, res) => {
   const data = req.body;
   try {
-    const orderId = parseInt(data.order_nsu);
+    const orderNsu = data.order_nsu ? data.order_nsu.toString() : '';
+
+    if (orderNsu.startsWith('RECHARGE_')) {
+      // É uma recarga de saldo: RECHARGE_{userId}_{amount}_{timestamp}
+      const parts = orderNsu.split('_');
+      const userId = parseInt(parts[1]);
+      const amount = parseInt(parts[2]); // Em centavos
+
+      if (userId && amount) {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { walletBalance: { increment: amount } }
+        });
+        console.log(`Recarga de saldo via PIX efetuada com sucesso: ID ${userId} - R$ ${amount/100}`);
+      }
+      return res.status(200).send('OK');
+    }
+
+    const orderId = parseInt(orderNsu);
     if (orderId) {
       const order = await prisma.order.update({
         where: { id: orderId },
@@ -717,6 +788,7 @@ app.post('/api/webhook/infinitepay', async (req, res) => {
     }
     res.status(200).send('OK');
   } catch (error) {
+    console.error('Webhook error:', error);
     res.status(200).send('Error but acknowledged');
   }
 });

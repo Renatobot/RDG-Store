@@ -25,49 +25,148 @@ const highlightKeywords = (text) => {
 
 const RichDescription = ({ text }) => {
   if (!text) return null;
-  
-  const lines = text.split('\n');
-  
-  return (
-    <div className="space-y-3 text-sm leading-relaxed">
-      {lines.map((line, idx) => {
-        const trimmedLine = line.trim();
-        if (!trimmedLine) return <div key={idx} className="h-1"></div>;
-        
-        // Checklist Heading
-        if (trimmedLine.toUpperCase().includes('O QUE VOCÊ VAI RECEBER:') || trimmedLine.toUpperCase().includes('O QUE VOCE VAI RECEBER:')) {
-          return <h4 key={idx} className="font-black text-white mt-8 mb-4 uppercase tracking-wider">{trimmedLine}</h4>;
-        }
 
-        // Informações Heading
-        if (trimmedLine.toUpperCase().includes('INFORMAÇÕES IMPORTANTES:') || trimmedLine.toUpperCase().includes('INFORMACOES IMPORTANTES:')) {
-          return <h4 key={idx} className="font-black text-white mt-8 mb-4 uppercase tracking-wider">{trimmedLine}</h4>;
-        }
-        
-        // Alertas
-        if (trimmedLine.toUpperCase().startsWith('ATENÇÃO:') || trimmedLine.toUpperCase().startsWith('ATENCAO:')) {
+  const lines = text.split('\n');
+  const sections = [];
+  let currentSection = { type: 'paragraph', items: [], title: null };
+
+  const pushSection = () => {
+    if (currentSection.items.length > 0 || currentSection.title) {
+      sections.push({ ...currentSection });
+    }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    
+    const upperLine = line.toUpperCase();
+
+    if (upperLine.includes('SOBRE O SERVIÇO:') || upperLine.includes('SOBRE O SERVICO:')) {
+      pushSection();
+      currentSection = { type: 'about', items: [], title: line };
+    } else if (upperLine.includes('O QUE VOCÊ VAI RECEBER:') || upperLine.includes('O QUE VOCE VAI RECEBER:')) {
+      pushSection();
+      currentSection = { type: 'receive-grid', items: [], title: line };
+    } else if (upperLine.includes('INDICAÇÕES DE USO:') || upperLine.includes('INDICACOES DE USO:')) {
+      pushSection();
+      currentSection = { type: 'usage-indications', items: [], title: line };
+    } else if (upperLine.includes('OBSERVAÇÕES DE USO:') || upperLine.includes('OBSERVACOES DE USO:')) {
+      pushSection();
+      currentSection = { type: 'usage-observations', items: [], title: line };
+    } else if (upperLine.includes('INFORMAÇÕES ADICIONAIS:') || upperLine.includes('INFORMACOES ADICIONAIS:')) {
+      pushSection();
+      currentSection = { type: 'additional-info', items: [], title: line };
+    } else if (upperLine.startsWith('ATENÇÃO:') || upperLine.startsWith('ATENCAO:')) {
+      pushSection();
+      currentSection = { type: 'alert', items: [line], title: null };
+    } else {
+      currentSection.items.push(line);
+    }
+  }
+  pushSection();
+
+  return (
+    <div className="space-y-8 text-sm leading-relaxed mt-4">
+      {sections.map((sec, idx) => {
+        if (sec.type === 'alert') {
+           const content = sec.items[0].substring(8).trim();
            return (
-             <div key={idx} className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl flex gap-3 text-red-200 mt-6 mb-4">
+             <div key={idx} className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl flex gap-3 text-red-200">
                <ShieldCheck size={20} className="text-red-500 shrink-0" />
                <div>
                  <strong className="text-red-500 font-bold block mb-1">Atenção Importante</strong>
-                 {highlightKeywords(trimmedLine.substring(8).trim())}
+                 {highlightKeywords(content)}
                </div>
              </div>
            );
         }
-        
-        if (/^[-*✅✔️]/.test(trimmedLine)) {
-          const content = trimmedLine.replace(/^[-*✅✔️]\s*/, '').trim();
+
+        if (sec.type === 'about' || sec.type === 'paragraph') {
           return (
-            <div key={idx} className="flex items-center gap-3 bg-white/5 dark:bg-black/40 p-3.5 rounded-xl border border-white/10 shadow-inner hover:border-primary/30 transition-colors">
-              <CheckCircle size={18} className="text-primary shrink-0" />
-              <span className="text-gray-800 dark:text-gray-300 font-medium">{highlightKeywords(content)}</span>
+            <div key={idx} className="space-y-4">
+              {sec.title && <h4 className="font-bold text-gray-500 text-xs uppercase tracking-wider">{sec.title}</h4>}
+              <div className="text-gray-300 px-1 space-y-3">
+                {sec.items.map((p, i) => {
+                  // Fallback: se o paragraph tiver checkmarks (comportamento antigo) renderizamos box
+                  if (/^[-*✅✔️]/.test(p) && sec.type === 'paragraph') {
+                    const content = p.replace(/^[-*✅✔️]\s*/, '').trim();
+                    return (
+                      <div key={i} className="flex items-center gap-3 bg-white/5 p-3.5 rounded-xl border border-white/10 shadow-inner hover:border-primary/30 transition-colors">
+                        <CheckCircle size={18} className="text-primary shrink-0" />
+                        <span className="text-gray-300 font-medium">{highlightKeywords(content)}</span>
+                      </div>
+                    );
+                  }
+                  return <p key={i}>{highlightKeywords(p)}</p>;
+                })}
+              </div>
             </div>
           );
         }
-        
-        return <p key={idx} className="text-gray-600 dark:text-gray-400 px-1">{highlightKeywords(trimmedLine)}</p>;
+
+        if (sec.type === 'receive-grid') {
+          const validItems = sec.items.filter(item => item.trim().length > 0);
+          return (
+            <div key={idx}>
+               {sec.title && <h4 className="font-bold text-gray-500 text-xs uppercase tracking-wider mb-3">{sec.title}</h4>}
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                 {validItems.map((item, i) => {
+                    const content = item.replace(/^[-*✅✔️]\s*/, '').trim();
+                    return (
+                      <div key={i} className="flex items-start gap-3 bg-[#0a0a0c] p-4 rounded-xl border border-white/10 hover:border-white/20 transition-colors shadow-sm">
+                        <CheckCircle size={18} className="text-primary shrink-0 mt-0.5" />
+                        <span className="text-gray-200 font-medium">{highlightKeywords(content)}</span>
+                      </div>
+                    )
+                 })}
+               </div>
+            </div>
+          );
+        }
+
+        if (sec.type === 'usage-indications' || sec.type === 'usage-observations') {
+          return (
+            <div key={idx}>
+               {sec.title && <h4 className="font-bold text-gray-500 text-xs uppercase tracking-wider mb-3">{sec.title}</h4>}
+               <div className="space-y-2">
+                 {sec.items.map((item, i) => {
+                    const content = item.replace(/^[-*✅✔️]\s*/, '').trim();
+                    if (!content) return null;
+                    return (
+                      <div key={i} className="flex items-start gap-3 bg-[#0a0a0c] px-4 py-3.5 rounded-lg border border-white/10">
+                        <span className="text-gray-500 shrink-0 mt-0.5">-</span>
+                        <span className="text-gray-300 font-medium">{highlightKeywords(content)}</span>
+                      </div>
+                    )
+                 })}
+               </div>
+            </div>
+          );
+        }
+
+        if (sec.type === 'additional-info') {
+          const validItems = sec.items.filter(item => item.includes(':'));
+          return (
+            <div key={idx}>
+               {sec.title && <h4 className="font-bold text-gray-500 text-xs uppercase tracking-wider mb-3">{sec.title}</h4>}
+               <div className="border border-white/10 rounded-xl overflow-hidden bg-[#0a0a0c]">
+                 {validItems.map((item, i) => {
+                    const [key, ...rest] = item.split(':');
+                    const value = rest.join(':').trim();
+                    return (
+                      <div key={i} className={`flex flex-col md:flex-row md:items-center px-5 py-4 ${i !== validItems.length - 1 ? 'border-b border-white/10' : ''}`}>
+                        <div className="md:w-1/3 text-gray-500 font-bold text-xs tracking-wider md:mb-0 uppercase mb-1">{key.replace(/^[-*✅✔️]\s*/, '').trim()}</div>
+                        <div className="md:w-2/3 text-gray-200 font-medium">{highlightKeywords(value)}</div>
+                      </div>
+                    )
+                 })}
+               </div>
+            </div>
+          );
+        }
+
+        return null;
       })}
     </div>
   );

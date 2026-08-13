@@ -78,6 +78,7 @@ export default function AdminPanel() {
   const [isCustomCat, setIsCustomCat] = useState(false);
   const [isCustomBadge, setIsCustomBadge] = useState(false);
   const [formData, setFormData] = useState({ name:'', description:'', price:'', originalPrice:'', validity:'', imageUrl:'', category:'Streaming', badge:'', hasVariations:false, variations:[], isVip:false, isBundle:false, bundleItems:[] });
+  const [isEnhancing, setIsEnhancing] = useState(false);
 
   // ── Banner ──
   const [bannerUrl, setBannerUrl] = useState('');
@@ -124,6 +125,38 @@ export default function AdminPanel() {
   };
 
   // ── Products ─────────────────────────────────────────────────────────────────
+  const enhanceDescription = async () => {
+    if (!formData.description) return alert("Digite pelo menos o básico do produto para a IA trabalhar.");
+    setIsEnhancing(true);
+    
+    const prompt = `Reescreva a seguinte descrição de produto para um site de vendas premium de serviços digitais. O texto deve ser altamente persuasivo e dividido EXATAMENTE nas seguintes seções em maiúsculo (não use markdown de título como #, apenas escreva o título exato seguido de dois pontos e pule de linha):
+SOBRE O SERVIÇO:
+(parágrafo persuasivo)
+O QUE VOCÊ VAI RECEBER:
+(lista com emojis de check ✅)
+INDICAÇÕES DE USO:
+(lista de casos de uso usando emoji de check ou traço)
+OBSERVAÇÕES DE USO:
+(regras ou alertas, se houver)
+INFORMAÇÕES ADICIONAIS:
+(Tabela no formato Chave: Valor. Exemplo -> Plataforma: Canva).
+
+Aqui está o texto base que você deve aprimorar e formatar:
+${formData.description}`;
+
+    try {
+      const response = await fetch(`https://text.pollinations.ai/prompt/${encodeURIComponent(prompt)}`);
+      const data = await response.text();
+      if (data) {
+        setFormData({...formData, description: data.trim()});
+      }
+    } catch(err) {
+      alert("Erro ao conectar com a IA.");
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
   const openModal = (p = null) => {
     if (p) {
       setEditingId(p.id);
@@ -752,9 +785,15 @@ export default function AdminPanel() {
               </Field>
             </div>
 
-            <Field label="Descrição">
-              <textarea value={formData.description} onChange={e => setFormData({...formData,description:e.target.value})} className={`${inp} h-20 resize-none`} placeholder="Descreva o produto..." />
-            </Field>
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">Descrição</label>
+                <button type="button" onClick={enhanceDescription} disabled={isEnhancing} className="text-xs font-bold flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-primary text-white hover:opacity-80 px-3 py-1.5 rounded-lg transition-all disabled:opacity-50 shadow-lg shadow-purple-500/20">
+                  <Bot size={14} /> {isEnhancing ? 'Mágica acontecendo...' : 'Aprimorar com IA'}
+                </button>
+              </div>
+              <textarea value={formData.description} onChange={e => setFormData({...formData,description:e.target.value})} className={`${inp} h-32 resize-y`} placeholder="Descreva o produto ou digite o básico e deixe a IA fazer a mágica..." />
+            </div>
 
             <div className="flex items-center gap-6 mb-2 border-t border-white/5 pt-4">
               <label className="flex items-center gap-2 cursor-pointer">

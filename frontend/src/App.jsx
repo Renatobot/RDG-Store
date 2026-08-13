@@ -16,6 +16,7 @@ import { useContext, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 
 import SocialProof from './components/SocialProof';
+import SupportButton from './components/SupportButton';
 
 function AdminRoute({ children }) {
   const { user, loading } = useContext(AuthContext);
@@ -59,6 +60,7 @@ function AppContent() {
         </Routes>
       </div>
 
+      {!isAdmin && <SupportButton />}
       {!isAdmin && <Footer />}
     </div>
   );
