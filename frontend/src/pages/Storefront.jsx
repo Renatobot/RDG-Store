@@ -73,7 +73,7 @@ const RichDescription = ({ text }) => {
   );
 };
 
-const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCart, products }) => {
+const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCart, products, setSelectedProductDetail }) => {
   const hasVariations = p.hasVariations && p.variations?.length > 0;
   const [selectedVariation, setSelectedVariation] = useState(hasVariations ? p.variations[0] : null);
 
@@ -104,8 +104,8 @@ const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCa
           {/* Imagem */}
           {p.imageUrl && (
             <div className="w-full aspect-[16/9] md:aspect-video bg-black relative border-b border-white/5">
-              <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover opacity-90" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0f1014] to-transparent"></div>
+              <img src={p.imageUrl} alt={p.name} className="w-full h-full object-contain bg-black opacity-90" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0f1014] to-transparent pointer-events-none"></div>
               {p.badge && <div className="absolute top-4 left-4 bg-primary text-white text-xs font-black px-3 py-1.5 rounded-md shadow-lg uppercase tracking-wider">{p.badge}</div>}
             </div>
           )}
@@ -159,13 +159,23 @@ const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCa
               <h4 className="text-sm font-black text-white uppercase tracking-wider mb-6">Você também pode gostar</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {products.filter(rel => rel.category === p.category && rel.id !== p.id).slice(0, 4).map(rel => (
-                  <div key={rel.id} className="bg-white/5 border border-white/5 rounded-xl p-3 flex items-center gap-3">
-                     {rel.imageUrl && <img src={rel.imageUrl} alt={rel.name} className="w-14 h-14 rounded-lg object-cover" />}
-                     <div>
+                  <button 
+                    key={rel.id} 
+                    onClick={() => {
+                      if (setSelectedProductDetail) setSelectedProductDetail(rel);
+                    }}
+                    className="bg-white/5 border border-white/5 hover:border-primary/50 hover:bg-white/10 transition-all rounded-xl p-3 flex items-center gap-3 text-left w-full cursor-pointer"
+                  >
+                     {rel.imageUrl && (
+                       <div className="w-14 h-14 rounded-lg bg-black/40 flex-shrink-0 flex items-center justify-center p-1 border border-white/10">
+                         <img src={rel.imageUrl} alt={rel.name} className="w-full h-full object-contain" />
+                       </div>
+                     )}
+                     <div className="flex-1 overflow-hidden">
                        <div className="text-sm font-bold text-white line-clamp-1">{rel.name}</div>
-                       <div className="text-xs text-primary font-bold">R$ {(rel.price/100).toFixed(2).replace('.', ',')}</div>
+                       <div className="text-xs text-primary font-bold mt-1">R$ {(rel.price/100).toFixed(2).replace('.', ',')}</div>
                      </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -898,6 +908,7 @@ export default function Storefront() {
           user={user} 
           addToCart={addToCart} 
           products={products}
+          setSelectedProductDetail={setSelectedProductDetail}
         />
       )}
 
