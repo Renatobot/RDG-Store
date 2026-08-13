@@ -10,7 +10,7 @@ import Login from './pages/Login';
 import ClientDashboard from './pages/ClientDashboard';
 import Footer from './components/Footer';
 import { ThemeProvider } from './contexts/ThemeContext';
-
+import { SettingsProvider } from './contexts/SettingsContext';
 import { AuthContext } from './contexts/AuthContext';
 import { useContext, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
@@ -67,13 +67,15 @@ function AppContent() {
 function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <CartProvider>
-          <BrowserRouter>
-            <AppContent />
-          </BrowserRouter>
-        </CartProvider>
-      </AuthProvider>
+      <SettingsProvider>
+        <AuthProvider>
+          <CartProvider>
+            <BrowserRouter>
+              <AppContent />
+            </BrowserRouter>
+          </CartProvider>
+        </AuthProvider>
+      </SettingsProvider>
     </ThemeProvider>
   );
 }

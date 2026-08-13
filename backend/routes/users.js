@@ -52,7 +52,7 @@ router.get('/me/orders', verifyToken, async (req, res) => {
           include: { 
             product: true,
             variation: true,
-            credentials: true
+            credentials: { include: { product: true } }
           }
         }
       },

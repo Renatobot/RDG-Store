@@ -86,9 +86,7 @@ app.get('/api/products', async (req, res) => {
       include: { 
         variations: {
           include: {
-            _count: {
-              select: { credentials: { where: { isUsed: false } } }
-            }
+            _count: { select: { credentials: { where: { isUsed: false } } } }
           }
         },
         _count: {
@@ -96,10 +94,34 @@ app.get('/api/products', async (req, res) => {
         },
         reviews: {
           select: { rating: true }
+        },
+        bundleItems: {
+          include: {
+            component: {
+              include: {
+                _count: { select: { credentials: { where: { isUsed: false } } } }
+              }
+            }
+          }
         }
       }
     });
-    res.json(products);
+
+    const productsWithStock = products.map(p => {
+      if (p.isBundle && p.bundleItems && p.bundleItems.length > 0) {
+        let maxBundles = Infinity;
+        p.bundleItems.forEach(bi => {
+          const compStock = bi.component?._count?.credentials || 0;
+          const possible = Math.floor(compStock / bi.quantity);
+          if (possible < maxBundles) maxBundles = possible;
+        });
+        if (maxBundles === Infinity) maxBundles = 0;
+        p._count = { ...p._count, credentials: maxBundles };
+      }
+      return p;
+    });
+
+    res.json(productsWithStock);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Erro ao buscar produtos' });
@@ -108,18 +130,19 @@ app.get('/api/products', async (req, res) => {
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { name, description, price, originalPrice, validity, imageUrl, category, badge, hasVariations, variations, isVip } = req.body;
+    const { name, description, price, originalPrice, validity, imageUrl, category, badge, hasVariations, variations, isVip, isBundle, bundleItems } = req.body;
     
     const productData = { 
       name, description, imageUrl, category, badge,
       hasVariations: !!hasVariations,
       isVip: !!isVip,
+      isBundle: !!isBundle,
       price: parseInt(price || 0),
       originalPrice: originalPrice ? parseInt(originalPrice) : null,
       validity: validity || null
     };
 
-    if (hasVariations && variations && variations.length > 0) {
+    if (hasVariations && variations && variations.length > 0 && !isBundle) {
       productData.variations = {
         create: variations.map(v => ({
           name: v.name,
@@ -130,12 +153,22 @@ app.post('/api/products', async (req, res) => {
       };
     }
 
+    if (isBundle && bundleItems && bundleItems.length > 0) {
+      productData.bundleItems = {
+        create: bundleItems.map(bi => ({
+          componentId: parseInt(bi.componentId),
+          quantity: parseInt(bi.quantity || 1)
+        }))
+      };
+    }
+
     const product = await prisma.product.create({
       data: productData,
-      include: { variations: true }
+      include: { variations: true, bundleItems: true }
     });
     res.json(product);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Erro ao criar produto' });
   }
 });
@@ -143,20 +176,22 @@ app.post('/api/products', async (req, res) => {
 app.put('/api/products/:id', async (req, res) => {
   try {
     const productId = parseInt(req.params.id);
-    const { name, description, price, originalPrice, validity, imageUrl, category, badge, hasVariations, variations, isVip } = req.body;
+    const { name, description, price, originalPrice, validity, imageUrl, category, badge, hasVariations, variations, isVip, isBundle, bundleItems } = req.body;
     
     await prisma.productVariation.deleteMany({ where: { productId } });
+    await prisma.bundleItem.deleteMany({ where: { bundleId: productId } });
 
     const productData = { 
       name, description, imageUrl, category, badge,
       hasVariations: !!hasVariations,
       isVip: !!isVip,
+      isBundle: !!isBundle,
       price: parseInt(price || 0),
       originalPrice: originalPrice ? parseInt(originalPrice) : null,
       validity: validity || null
     };
 
-    if (hasVariations && variations && variations.length > 0) {
+    if (hasVariations && variations && variations.length > 0 && !isBundle) {
       productData.variations = {
         create: variations.map(v => ({
           name: v.name,
@@ -167,13 +202,23 @@ app.put('/api/products/:id', async (req, res) => {
       };
     }
 
+    if (isBundle && bundleItems && bundleItems.length > 0) {
+      productData.bundleItems = {
+        create: bundleItems.map(bi => ({
+          componentId: parseInt(bi.componentId),
+          quantity: parseInt(bi.quantity || 1)
+        }))
+      };
+    }
+
     const product = await prisma.product.update({
       where: { id: productId },
       data: productData,
-      include: { variations: true }
+      include: { variations: true, bundleItems: true }
     });
     res.json(product);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Erro ao atualizar produto' });
   }
 });
@@ -682,8 +727,8 @@ app.post('/api/webhook/infinitepay', async (req, res) => {
 app.get('/api/orders', async (req, res) => {
   try {
     const orders = await prisma.order.findMany({
-      include: {
-        items: { include: { product: true, variation: true, credentials: true } },
+        include: {
+        items: { include: { product: true, variation: true, credentials: { include: { product: true } } } },
         user: true
       },
       orderBy: { createdAt: 'desc' }
@@ -700,34 +745,61 @@ async function autoDeliverOrder(orderId) {
     where: { id: orderId },
     include: { items: true }
   });
-  if (!order || order.status !== 'ENTREGUE') return; // Só entrega se estiver com status ENTREGUE
+  if (!order || order.status !== 'ENTREGUE') return;
 
   for (const item of order.items) {
-    // Quantas credenciais precisamos para este item?
-    const needed = item.quantity;
-    
-    // Verifica quantas credenciais este item já tem (pra não duplicar em re-entregas)
-    const existing = await prisma.credential.count({ where: { orderId: item.id } });
-    if (existing >= needed) continue;
-
-    const remainingToAssign = needed - existing;
-
-    // Buscar credenciais livres
-    const freeCredentials = await prisma.credential.findMany({
-      where: { 
-        isUsed: false,
-        productId: item.productId,
-        variationId: item.variationId
-      },
-      take: remainingToAssign
+    const product = await prisma.product.findUnique({
+      where: { id: item.productId },
+      include: { bundleItems: true }
     });
 
-    // Atribuir as que encontrou
-    for (const cred of freeCredentials) {
-      await prisma.credential.update({
-        where: { id: cred.id },
-        data: { isUsed: true, orderId: item.id }
+    if (!product) continue;
+
+    if (product.isBundle && product.bundleItems && product.bundleItems.length > 0) {
+      for (const bi of product.bundleItems) {
+        const needed = bi.quantity * item.quantity;
+        
+        // Count how many we already assigned of this specific component
+        const existing = await prisma.credential.count({ 
+          where: { orderId: item.id, productId: bi.componentId } 
+        });
+        
+        if (existing >= needed) continue;
+        const remaining = needed - existing;
+
+        const freeCredentials = await prisma.credential.findMany({
+          where: { isUsed: false, productId: bi.componentId },
+          take: remaining
+        });
+
+        for (const cred of freeCredentials) {
+          await prisma.credential.update({
+            where: { id: cred.id },
+            data: { isUsed: true, orderId: item.id }
+          });
+        }
+      }
+    } else {
+      const needed = item.quantity;
+      const existing = await prisma.credential.count({ where: { orderId: item.id } });
+      if (existing >= needed) continue;
+      const remaining = needed - existing;
+
+      const freeCredentials = await prisma.credential.findMany({
+        where: { 
+          isUsed: false,
+          productId: item.productId,
+          variationId: item.variationId
+        },
+        take: remaining
       });
+
+      for (const cred of freeCredentials) {
+        await prisma.credential.update({
+          where: { id: cred.id },
+          data: { isUsed: true, orderId: item.id }
+        });
+      }
     }
   }
 }

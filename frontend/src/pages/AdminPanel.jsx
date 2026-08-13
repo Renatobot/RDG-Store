@@ -10,6 +10,7 @@ import StockManager from '../components/StockManager';
 import AdminDashboard from '../components/AdminDashboard';
 import AffiliatesPanel from '../components/AffiliatesPanel';
 import { AuthContext } from '../contexts/AuthContext';
+import ImageUploader from '../components/ImageUploader';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 const fmtR = c => `R$ ${(c / 100).toFixed(2).replace('.', ',')}`;
@@ -76,7 +77,7 @@ export default function AdminPanel() {
   const [editingId, setEditingId] = useState(null);
   const [isCustomCat, setIsCustomCat] = useState(false);
   const [isCustomBadge, setIsCustomBadge] = useState(false);
-  const [formData, setFormData] = useState({ name:'', description:'', price:'', originalPrice:'', validity:'', imageUrl:'', category:'Streaming', badge:'', hasVariations:false, variations:[], isVip:false });
+  const [formData, setFormData] = useState({ name:'', description:'', price:'', originalPrice:'', validity:'', imageUrl:'', category:'Streaming', badge:'', hasVariations:false, variations:[], isVip:false, isBundle:false, bundleItems:[] });
 
   // ── Banner ──
   const [bannerUrl, setBannerUrl] = useState('');
@@ -107,19 +108,19 @@ export default function AdminPanel() {
   const tok = () => localStorage.getItem('token');
   const auth = () => ({ headers: { Authorization: `Bearer ${tok()}` } });
 
-  const fetchOrders = () => axios.get('http://192.168.1.5:3001/api/orders').then(r => setOrders(r.data)).catch(console.error);
-  const fetchProducts = () => axios.get('http://192.168.1.5:3001/api/products').then(r => setProducts(r.data)).catch(console.error);
-  const fetchBanners = () => axios.get('http://192.168.1.5:3001/api/banners').then(r => setBanners(r.data)).catch(console.error);
-  const fetchUsers = () => axios.get('http://192.168.1.5:3001/api/users/admin/list', auth()).then(r => setUsers(r.data)).catch(console.error);
-  const fetchCoupons = () => axios.get('http://192.168.1.5:3001/api/coupons', auth()).then(r => setCoupons(r.data)).catch(console.error);
-  const fetchSettings = () => axios.get('http://192.168.1.5:3001/api/settings').then(r => setSettings(p => ({ ...p, ...r.data }))).catch(console.error);
-  const fetchCredentials = () => axios.get('http://192.168.1.5:3001/api/credentials').then(r => setCredentials(r.data)).catch(console.error);
+  const fetchOrders = () => axios.get('https://streaming-store-api.onrender.com/api/orders').then(r => setOrders(r.data)).catch(console.error);
+  const fetchProducts = () => axios.get('https://streaming-store-api.onrender.com/api/products').then(r => setProducts(r.data)).catch(console.error);
+  const fetchBanners = () => axios.get('https://streaming-store-api.onrender.com/api/banners').then(r => setBanners(r.data)).catch(console.error);
+  const fetchUsers = () => axios.get('https://streaming-store-api.onrender.com/api/users/admin/list', auth()).then(r => setUsers(r.data)).catch(console.error);
+  const fetchCoupons = () => axios.get('https://streaming-store-api.onrender.com/api/coupons', auth()).then(r => setCoupons(r.data)).catch(console.error);
+  const fetchSettings = () => axios.get('https://streaming-store-api.onrender.com/api/settings').then(r => setSettings(p => ({ ...p, ...r.data }))).catch(console.error);
+  const fetchCredentials = () => axios.get('https://streaming-store-api.onrender.com/api/credentials').then(r => setCredentials(r.data)).catch(console.error);
 
   // ── Orders ──────────────────────────────────────────────────────────────────
-  const markDelivered = id => axios.patch(`http://192.168.1.5:3001/api/orders/${id}/status`, { status:'ENTREGUE' }).then(fetchOrders).catch(() => alert('Erro'));
+  const markDelivered = id => axios.patch(`https://streaming-store-api.onrender.com/api/orders/${id}/status`, { status:'ENTREGUE' }).then(fetchOrders).catch(() => alert('Erro'));
   const refund = async id => {
     if (!window.confirm('Reembolsar para a carteira do cliente?')) return;
-    await axios.post('http://192.168.1.5:3001/api/users/admin/refund', { orderId:id }, auth()).then(fetchOrders).catch(e => alert(e.response?.data?.error || 'Erro'));
+    await axios.post('https://streaming-store-api.onrender.com/api/users/admin/refund', { orderId:id }, auth()).then(fetchOrders).catch(e => alert(e.response?.data?.error || 'Erro'));
   };
 
   // ── Products ─────────────────────────────────────────────────────────────────
@@ -128,40 +129,51 @@ export default function AdminPanel() {
       setEditingId(p.id);
       setIsCustomCat(!CATS.includes(p.category));
       setIsCustomBadge(p.badge && !BADGES.includes(p.badge));
-      setFormData({ name:p.name, description:p.description||'', price:(p.price/100).toString(), originalPrice:p.originalPrice?(p.originalPrice/100).toString():'', validity:p.validity||'', imageUrl:p.imageUrl||'', category:p.category||'Streaming', badge:p.badge||'', hasVariations:p.hasVariations||false, isVip:p.isVip||false, variations:(p.variations||[]).map(v => ({ name:v.name, price:(v.price/100).toString(), originalPrice:v.originalPrice?(v.originalPrice/100).toString():'', validity:v.validity||'' })) });
+      setFormData({ 
+        name:p.name, description:p.description||'', price:(p.price/100).toString(), originalPrice:p.originalPrice?(p.originalPrice/100).toString():'', validity:p.validity||'', imageUrl:p.imageUrl||'', category:p.category||'Streaming', badge:p.badge||'', hasVariations:p.hasVariations||false, isVip:p.isVip||false, 
+        variations:(p.variations||[]).map(v => ({ name:v.name, price:(v.price/100).toString(), originalPrice:v.originalPrice?(v.originalPrice/100).toString():'', validity:v.validity||'' })),
+        isBundle:p.isBundle||false,
+        bundleItems:(p.bundleItems||[]).map(b => ({ componentId: b.componentId, quantity: b.quantity }))
+      });
     } else {
       setEditingId(null); setIsCustomCat(false); setIsCustomBadge(false);
-      setFormData({ name:'', description:'', price:'', originalPrice:'', validity:'', imageUrl:'', category:'Streaming', badge:'', hasVariations:false, variations:[], isVip:false });
+      setFormData({ name:'', description:'', price:'', originalPrice:'', validity:'', imageUrl:'', category:'Streaming', badge:'', hasVariations:false, variations:[], isVip:false, isBundle:false, bundleItems:[] });
     }
     setIsModalOpen(true);
   };
   const saveProduct = async e => {
     e.preventDefault();
-    const payload = { ...formData, price: Math.round(parseFloat(formData.price.replace(',','.')||0)*100), originalPrice:formData.originalPrice?Math.round(parseFloat(formData.originalPrice.replace(',','.'))*100):null, variations:formData.variations.map(v=>({ name:v.name, validity:v.validity, price:Math.round(parseFloat(v.price.replace(',','.')||0)*100), originalPrice:v.originalPrice?Math.round(parseFloat(v.originalPrice.replace(',','.'))*100):null })) };
-    try { editingId ? await axios.put(`http://192.168.1.5:3001/api/products/${editingId}`, payload) : await axios.post('http://192.168.1.5:3001/api/products', payload); setIsModalOpen(false); fetchProducts(); } catch { alert('Erro ao salvar produto'); }
+    const payload = { 
+      ...formData, 
+      price: Math.round(parseFloat(formData.price.replace(',','.')||0)*100), 
+      originalPrice:formData.originalPrice?Math.round(parseFloat(formData.originalPrice.replace(',','.'))*100):null, 
+      variations:formData.variations.map(v=>({ name:v.name, validity:v.validity, price:Math.round(parseFloat(v.price.replace(',','.')||0)*100), originalPrice:v.originalPrice?Math.round(parseFloat(v.originalPrice.replace(',','.'))*100):null })),
+      bundleItems:formData.bundleItems.map(b=>({ componentId: parseInt(b.componentId), quantity: parseInt(b.quantity) }))
+    };
+    try { editingId ? await axios.put(`https://streaming-store-api.onrender.com/api/products/${editingId}`, payload) : await axios.post('https://streaming-store-api.onrender.com/api/products', payload); setIsModalOpen(false); fetchProducts(); } catch { alert('Erro ao salvar produto'); }
   };
-  const deleteProduct = async id => { if (!window.confirm('Excluir produto?')) return; await axios.delete(`http://192.168.1.5:3001/api/products/${id}`).then(fetchProducts).catch(()=>alert('Erro')); };
+  const deleteProduct = async id => { if (!window.confirm('Excluir produto?')) return; await axios.delete(`https://streaming-store-api.onrender.com/api/products/${id}`).then(fetchProducts).catch(()=>alert('Erro')); };
 
   // ── Banners ──────────────────────────────────────────────────────────────────
   const saveBanner = async e => {
     e.preventDefault();
     if (!bannerUrl) return;
-    editBannerId ? await axios.put(`http://192.168.1.5:3001/api/banners/${editBannerId}`, { imageUrl:bannerUrl, mobileImageUrl: mobileBannerUrl, category:bannerCat }) : await axios.post('http://192.168.1.5:3001/api/banners', { imageUrl:bannerUrl, mobileImageUrl: mobileBannerUrl, category:bannerCat });
+    editBannerId ? await axios.put(`https://streaming-store-api.onrender.com/api/banners/${editBannerId}`, { imageUrl:bannerUrl, mobileImageUrl: mobileBannerUrl, category:bannerCat }) : await axios.post('https://streaming-store-api.onrender.com/api/banners', { imageUrl:bannerUrl, mobileImageUrl: mobileBannerUrl, category:bannerCat });
     setBannerUrl(''); setMobileBannerUrl(''); setBannerCat(''); setEditBannerId(null); fetchBanners();
   };
 
   // ── Coupons ──────────────────────────────────────────────────────────────────
-  const addCoupon = async e => { e.preventDefault(); try { await axios.post('http://192.168.1.5:3001/api/coupons', couponForm, auth()); setCouponForm({ code:'', type:'PERCENTAGE', value:'' }); fetchCoupons(); } catch { alert('Erro. Código já existe?'); } };
-  const deleteCoupon = async id => { if (!window.confirm('Excluir cupom?')) return; await axios.delete(`http://192.168.1.5:3001/api/coupons/${id}`, auth()).then(fetchCoupons); };
-  const toggleCoupon = async (id, active) => { await axios.put(`http://192.168.1.5:3001/api/coupons/${id}`, { isActive:!active }, auth()).then(fetchCoupons); };
+  const addCoupon = async e => { e.preventDefault(); try { await axios.post('https://streaming-store-api.onrender.com/api/coupons', couponForm, auth()); setCouponForm({ code:'', type:'PERCENTAGE', value:'' }); fetchCoupons(); } catch { alert('Erro. Código já existe?'); } };
+  const deleteCoupon = async id => { if (!window.confirm('Excluir cupom?')) return; await axios.delete(`https://streaming-store-api.onrender.com/api/coupons/${id}`, auth()).then(fetchCoupons); };
+  const toggleCoupon = async (id, active) => { await axios.put(`https://streaming-store-api.onrender.com/api/coupons/${id}`, { isActive:!active }, auth()).then(fetchCoupons); };
 
   // ── Settings ─────────────────────────────────────────────────────────────────
-  const saveSettings = async e => { e.preventDefault(); try { await axios.put('http://192.168.1.5:3001/api/settings', settings); alert('Salvo!'); } catch { alert('Erro'); } };
+  const saveSettings = async e => { e.preventDefault(); try { await axios.put('https://streaming-store-api.onrender.com/api/settings', settings); alert('Salvo!'); } catch { alert('Erro'); } };
 
   // ── Profile ──────────────────────────────────────────────────────────────────
-  const changePw = async e => { e.preventDefault(); try { await axios.put('http://192.168.1.5:3001/api/users/me/password', pwForm, auth()); alert('Senha alterada!'); setPwModal(false); setPwForm({ currentPassword:'', newPassword:'' }); } catch(err){ alert(err.response?.data?.error||'Erro'); } };
-  const changeAvatar = async e => { e.preventDefault(); try { const r = await axios.put('http://192.168.1.5:3001/api/users/me/avatar', avatarForm, auth()); setUser(r.data.user); alert('Foto alterada!'); setAvatarModal(false); } catch(err){ alert(err.response?.data?.error||'Erro'); } };
-  const changeProfile = async e => { e.preventDefault(); try { const r = await axios.put('http://192.168.1.5:3001/api/users/me/profile', profileForm, auth()); setUser(r.data.user); alert('Perfil atualizado!'); setProfileModal(false); } catch(err){ alert(err.response?.data?.error||'Erro'); } };
+  const changePw = async e => { e.preventDefault(); try { await axios.put('https://streaming-store-api.onrender.com/api/users/me/password', pwForm, auth()); alert('Senha alterada!'); setPwModal(false); setPwForm({ currentPassword:'', newPassword:'' }); } catch(err){ alert(err.response?.data?.error||'Erro'); } };
+  const changeAvatar = async e => { e.preventDefault(); try { const r = await axios.put('https://streaming-store-api.onrender.com/api/users/me/avatar', avatarForm, auth()); setUser(r.data.user); alert('Foto alterada!'); setAvatarModal(false); } catch(err){ alert(err.response?.data?.error||'Erro'); } };
+  const changeProfile = async e => { e.preventDefault(); try { const r = await axios.put('https://streaming-store-api.onrender.com/api/users/me/profile', profileForm, auth()); setUser(r.data.user); alert('Perfil atualizado!'); setProfileModal(false); } catch(err){ alert(err.response?.data?.error||'Erro'); } };
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const filteredUsers = users.filter(u => { const s = usersSearch.toLowerCase(); return !s || u.id.toString().includes(s) || u.name.toLowerCase().includes(s) || u.email.toLowerCase().includes(s); });
@@ -184,7 +196,11 @@ export default function AdminPanel() {
       {/* ─── TOP BAR ──────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 bg-black/80 backdrop-blur-xl border-b border-white/10 px-6 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <span className="text-white font-black text-lg tracking-tight">STREAM<span className="text-primary">STORE</span></span>
+          {settings?.logo_url ? (
+            <img src={settings.logo_url} alt="Logo" className="h-12 md:h-14 w-auto object-contain" />
+          ) : (
+            <span className="text-white font-black text-lg tracking-tight">STREAM<span className="text-primary">STORE</span></span>
+          )}
           <span className="text-gray-600 hidden sm:block">·</span>
           <span className="text-gray-400 text-sm hidden sm:block">Painel Admin</span>
         </div>
@@ -388,14 +404,18 @@ export default function AdminPanel() {
                 <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">{editBannerId ? '✏️ Editando Banner' : '➕ Adicionar Banner'}</h3>
                 <form onSubmit={saveBanner} className="flex flex-col gap-3">
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <input type="url" required value={bannerUrl} onChange={e => setBannerUrl(e.target.value)} placeholder="Link Desktop (Proporção 21:9 - ex: 1920x600)..." className={`${inp} flex-1`} />
+                    <div className="flex-1">
+                      <ImageUploader value={bannerUrl} onChange={setBannerUrl} placeholder="Link Desktop (Proporção 21:9 - ex: 1920x600)..." />
+                    </div>
                     <select value={bannerCat} onChange={e => setBannerCat(e.target.value)} className={`${inp} sm:w-44`}>
                       <option value="">Sem link de categoria</option>
                       {CATS.map(c => <option key={c}>{c}</option>)}
                     </select>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <input type="url" value={mobileBannerUrl} onChange={e => setMobileBannerUrl(e.target.value)} placeholder="Link Mobile (Opcional - Proporção 1:1 - ex: 1080x1080)..." className={`${inp} flex-1`} />
+                    <div className="flex-1">
+                      <ImageUploader value={mobileBannerUrl} onChange={setMobileBannerUrl} placeholder="Link Mobile (Opcional - Proporção 1:1 - ex: 1080x1080)..." />
+                    </div>
                     <button type="submit" className="bg-primary hover:bg-primary/80 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-colors shrink-0">{editBannerId ? 'Salvar Alterações' : 'Adicionar Banner'}</button>
                     {editBannerId && <button type="button" onClick={() => { setEditBannerId(null); setBannerUrl(''); setMobileBannerUrl(''); setBannerCat(''); }} className="bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-xl text-sm transition-colors">Cancelar</button>}
                   </div>
@@ -420,7 +440,7 @@ export default function AdminPanel() {
                     {b.category && <div className="absolute top-3 left-3 bg-primary/90 px-3 py-1 text-xs font-bold text-white rounded-lg shadow">{b.category}</div>}
                     <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
                       <button onClick={() => { setEditBannerId(b.id); setBannerUrl(b.imageUrl); setMobileBannerUrl(b.mobileImageUrl || ''); setBannerCat(b.category||''); window.scrollTo({top:0,behavior:'smooth'}); }} className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl transition-colors"><Edit size={18}/></button>
-                      <button onClick={() => { if(window.confirm('Excluir banner?')) axios.delete(`http://192.168.1.5:3001/api/banners/${b.id}`).then(fetchBanners); }} className="bg-red-600 hover:bg-red-700 text-white p-3 rounded-xl transition-colors"><Trash2 size={18}/></button>
+                      <button onClick={() => { if(window.confirm('Excluir banner?')) axios.delete(`https://streaming-store-api.onrender.com/api/banners/${b.id}`).then(fetchBanners); }} className="bg-red-600 hover:bg-red-700 text-white p-3 rounded-xl transition-colors"><Trash2 size={18}/></button>
                     </div>
                   </div>
                 ))}
@@ -483,20 +503,20 @@ export default function AdminPanel() {
                                 if (!v) return;
                                 const amt = Math.round(parseFloat(v.replace(',','.'))*100);
                                 if (isNaN(amt)||amt<=0) return alert('Inválido');
-                                await axios.post('http://192.168.1.5:3001/api/users/admin/add-balance', { userId:u.id, amount:amt }, auth()); fetchUsers();
+                                await axios.post('https://streaming-store-api.onrender.com/api/users/admin/add-balance', { userId:u.id, amount:amt }, auth()); fetchUsers();
                               }} className="bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white border border-green-500/30 px-2 py-1 rounded-lg text-[11px] font-bold transition-colors" title="Adicionar saldo">
                                 <Wallet size={12}/>
                               </button>
                               <button onClick={async () => {
-                                await axios.post('http://192.168.1.5:3001/api/users/admin/vip', { userId:u.id, vip:!u.isVip }, auth());
-                                if (u.id === user?.id) { const me = await axios.get('http://192.168.1.5:3001/api/auth/me', auth()); setUser(me.data); }
+                                await axios.post('https://streaming-store-api.onrender.com/api/users/admin/vip', { userId:u.id, vip:!u.isVip }, auth());
+                                if (u.id === user?.id) { const me = await axios.get('https://streaming-store-api.onrender.com/api/auth/me', auth()); setUser(me.data); }
                                 fetchUsers();
                               }} className={`${u.isVip ? 'bg-yellow-500/20 hover:bg-yellow-500 text-yellow-400' : 'bg-gray-700 hover:bg-yellow-500 text-gray-400'} hover:text-white border border-white/10 px-2 py-1 rounded-lg text-[11px] font-bold transition-colors`} title={u.isVip?'Remover VIP':'Tornar VIP'}>
                                 <Crown size={12}/>
                               </button>
                               <button onClick={async () => {
                                 if (!window.confirm(u.role==='BANNED'?'Desbanir?':'Banir este usuário?')) return;
-                                await axios.post('http://192.168.1.5:3001/api/users/admin/ban', { userId:u.id, ban:u.role!=='BANNED' }, auth()); fetchUsers();
+                                await axios.post('https://streaming-store-api.onrender.com/api/users/admin/ban', { userId:u.id, ban:u.role!=='BANNED' }, auth()); fetchUsers();
                               }} className={`${u.role==='BANNED' ? 'bg-gray-600/20 hover:bg-gray-600 text-gray-400' : 'bg-red-500/20 hover:bg-red-600 text-red-400'} hover:text-white border border-red-500/20 px-2 py-1 rounded-lg text-[11px] font-bold transition-colors`} title={u.role==='BANNED'?'Desbanir':'Banir'}>
                                 <Ban size={12}/>
                               </button>
@@ -622,6 +642,19 @@ export default function AdminPanel() {
                 </div>
 
                 <div className="bg-black/40 border border-white/10 rounded-2xl p-6 space-y-5">
+                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">🎨 Identidade Visual</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Logo (URL ou Upload)">
+                      <ImageUploader value={settings.logo_url} onChange={val => setSettings({...settings, logo_url:val})} placeholder="https://..." />
+                    </Field>
+                    <Field label="Favicon (URL ou Upload)">
+                      <ImageUploader value={settings.favicon_url} onChange={val => setSettings({...settings, favicon_url:val})} placeholder="https://..." />
+                      <p className="text-xs text-gray-600 mt-1">Ícone que aparece na aba do navegador.</p>
+                    </Field>
+                  </div>
+                </div>
+
+                <div className="bg-black/40 border border-white/10 rounded-2xl p-6 space-y-5">
                   <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">🤝 Programa de Afiliados</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Tipo de Recompensa">
@@ -723,18 +756,30 @@ export default function AdminPanel() {
               <textarea value={formData.description} onChange={e => setFormData({...formData,description:e.target.value})} className={`${inp} h-20 resize-none`} placeholder="Descreva o produto..." />
             </Field>
 
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-6 mb-2 border-t border-white/5 pt-4">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={formData.hasVariations} onChange={e => setFormData({...formData,hasVariations:e.target.checked})} className="w-4 h-4 rounded" />
-                <span className="text-sm text-gray-300">Tem variações</span>
+                <input type="checkbox" checked={formData.isBundle} onChange={e => setFormData({...formData,isBundle:e.target.checked, hasVariations:false})} className="w-4 h-4 rounded" />
+                <span className="text-sm font-bold text-white bg-primary/20 px-2 py-1 rounded">📦 É um Combo?</span>
               </label>
+              {!formData.isBundle && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={formData.hasVariations} onChange={e => setFormData({...formData,hasVariations:e.target.checked})} className="w-4 h-4 rounded" />
+                  <span className="text-sm text-gray-300">Tem variações</span>
+                </label>
+              )}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={formData.isVip} onChange={e => setFormData({...formData,isVip:e.target.checked})} className="w-4 h-4 rounded" />
                 <span className="text-sm text-yellow-400">👑 Produto VIP</span>
               </label>
             </div>
 
-            {!formData.hasVariations ? (
+            {formData.isBundle ? (
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Preço do Combo (R$)"><input type="text" required value={formData.price} onChange={e => setFormData({...formData,price:e.target.value})} placeholder="29,90" className={inp} /></Field>
+                <Field label="Preço Riscado"><input type="text" value={formData.originalPrice} onChange={e => setFormData({...formData,originalPrice:e.target.value})} placeholder="69,90" className={inp} /></Field>
+                <Field label="Validade"><input type="text" required value={formData.validity} onChange={e => setFormData({...formData,validity:e.target.value})} placeholder="30 dias" className={inp} /></Field>
+              </div>
+            ) : !formData.hasVariations ? (
               <div className="grid grid-cols-3 gap-3">
                 <Field label="Preço Atual (R$)"><input type="text" required value={formData.price} onChange={e => setFormData({...formData,price:e.target.value})} placeholder="15,90" className={inp} /></Field>
                 <Field label="Preço Riscado"><input type="text" value={formData.originalPrice} onChange={e => setFormData({...formData,originalPrice:e.target.value})} placeholder="59,90" className={inp} /></Field>
@@ -754,8 +799,35 @@ export default function AdminPanel() {
               </div>
             )}
 
-            <Field label="Link da Imagem (URL)">
-              <input type="url" value={formData.imageUrl} onChange={e => setFormData({...formData,imageUrl:e.target.value})} placeholder="https://..." className={inp} />
+            {formData.isBundle && (
+              <div className="border border-primary/30 rounded-xl p-4 bg-primary/10 space-y-3">
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Serviços deste Combo</h4>
+                {formData.bundleItems.map((b, i) => (
+                  <div key={i} className="grid grid-cols-4 gap-2 items-end border-b border-primary/20 pb-3">
+                    <div className="col-span-2">
+                      <label className="text-xs text-primary/70 mb-1 block font-bold">Produto Base</label>
+                      <select required value={b.componentId} onChange={e => { const nb=[...formData.bundleItems]; nb[i].componentId=e.target.value; setFormData({...formData,bundleItems:nb}); }} className={inp}>
+                        <option value="">Selecione um produto...</option>
+                        {products.filter(p => !p.isBundle && p.id !== editingId).map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-primary/70 mb-1 block font-bold">Quantidade</label>
+                      <input type="number" min="1" required value={b.quantity} onChange={e => { const nb=[...formData.bundleItems]; nb[i].quantity=e.target.value; setFormData({...formData,bundleItems:nb}); }} className={inp} />
+                    </div>
+                    <div className="flex gap-2 items-end">
+                      <button type="button" onClick={() => setFormData({...formData,bundleItems:formData.bundleItems.filter((_,j)=>j!==i)})} className="p-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-colors"><Trash2 size={16}/></button>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setFormData({...formData,bundleItems:[...formData.bundleItems,{componentId:'',quantity:'1'}]})} className="w-full text-white bg-primary hover:bg-primary/80 rounded-lg py-2.5 text-sm font-bold flex items-center justify-center gap-2 transition-colors"><Plus size={16}/> Adicionar Serviço</button>
+              </div>
+            )}
+
+            <Field label="Link da Imagem (URL ou Upload)">
+              <ImageUploader value={formData.imageUrl} onChange={val => setFormData({...formData,imageUrl:val})} placeholder="https://..." />
               {formData.imageUrl && <img src={formData.imageUrl} alt="preview" className="mt-2 w-full aspect-video object-cover rounded-xl border border-white/10" />}
             </Field>
 
@@ -785,9 +857,8 @@ export default function AdminPanel() {
       {avatarModal && (
         <Modal title="Trocar Foto de Perfil" onClose={() => setAvatarModal(false)}>
           <form onSubmit={changeAvatar} className="space-y-4">
-            <Field label="URL da Imagem">
-              <input type="url" required value={avatarForm.avatarUrl} onChange={e => setAvatarForm({avatarUrl:e.target.value})} placeholder="https://..." className={inp} />
-              <p className="text-xs text-gray-600 mt-1">Cole o link direto de uma imagem (.png ou .jpg)</p>
+            <Field label="Foto de Perfil (URL ou Upload)">
+              <ImageUploader value={avatarForm.avatarUrl} onChange={val => setAvatarForm({avatarUrl:val})} placeholder="https://..." />
             </Field>
             {avatarForm.avatarUrl && <img src={avatarForm.avatarUrl} alt="preview" className="w-24 h-24 rounded-full object-cover border-2 border-primary mx-auto" />}
             <div className="flex gap-3 pt-2">

@@ -21,7 +21,7 @@ export default function Checkout() {
   const handleApplyCoupon = async () => {
     if (!couponInput) return;
     try {
-      const res = await axios.post('http://192.168.1.5:3001/api/coupons/validate', { code: couponInput });
+      const res = await axios.post('https://streaming-store-api.onrender.com/api/coupons/validate', { code: couponInput });
       setAppliedCoupon(res.data);
       setError('');
     } catch (err) {
@@ -53,7 +53,7 @@ export default function Checkout() {
         quantity: c.quantity 
       }));
 
-      const res = await axios.post('http://192.168.1.5:3001/api/checkout', {
+      const res = await axios.post('https://streaming-store-api.onrender.com/api/checkout', {
         customerName: name,
         customerWhatsapp: whatsapp,
         cartItems,

@@ -2,12 +2,54 @@ import { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { 
   ShieldCheck, Zap, HeartHandshake, ChevronLeft, ChevronRight, ShoppingCart, 
-  Menu, X, Tag, Monitor, Gamepad2, Bot, Wrench, Video, Key, Package, Flame, Smartphone, Plus, MessageCircle, Send, Trophy
+  Menu, X, Tag, Monitor, Gamepad2, Bot, Wrench, Video, Key, Package, Flame, Smartphone, Plus, MessageCircle, Send, Trophy, CheckCircle, FileText
 } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { CartContext } from '../contexts/CartContext';
 import { AuthContext } from '../contexts/AuthContext';
 import { Lock, Star } from 'lucide-react';
+
+const highlightKeywords = (text) => {
+  const keywords = ['garantia', 'acesso imediato', '4k', 'premium', 'vitalício', 'vitalicio', 'telas', 'tela', 'suporte', 'hd', 'uhd', 'original', 'ilimitado'];
+  const regex = new RegExp(`(${keywords.join('|')})`, 'gi');
+  
+  const parts = text.split(regex);
+  
+  return parts.map((part, i) => {
+    if (keywords.includes(part.toLowerCase())) {
+      return <strong key={i} className="text-primary font-bold">{part}</strong>;
+    }
+    return part;
+  });
+};
+
+const RichDescription = ({ text }) => {
+  if (!text) return null;
+  
+  const lines = text.split('\n');
+  
+  return (
+    <div className="space-y-3 text-sm leading-relaxed">
+      {lines.map((line, idx) => {
+        const trimmedLine = line.trim();
+        
+        if (trimmedLine.startsWith('-') || trimmedLine.startsWith('*')) {
+          const content = trimmedLine.substring(1).trim();
+          return (
+            <div key={idx} className="flex items-start gap-3 bg-white/5 dark:bg-black/40 p-3 rounded-lg border border-white/5 shadow-inner">
+              <CheckCircle size={18} className="text-primary mt-0.5 shrink-0" />
+              <span className="text-gray-800 dark:text-gray-300">{highlightKeywords(content)}</span>
+            </div>
+          );
+        }
+        
+        if (!trimmedLine) return <div key={idx} className="h-1"></div>;
+        
+        return <p key={idx} className="text-gray-600 dark:text-gray-400 px-1">{highlightKeywords(trimmedLine)}</p>;
+      })}
+    </div>
+  );
+};
 
 export default function Storefront() {
   const [products, setProducts] = useState([]);
@@ -48,9 +90,9 @@ export default function Storefront() {
 
   useEffect(() => {
     // Buscar produtos, banners e configurações
-    axios.get('http://192.168.1.5:3001/api/products').then(res => setProducts(res.data));
-    axios.get('http://192.168.1.5:3001/api/banners').then(res => setBanners(res.data));
-    axios.get('http://192.168.1.5:3001/api/settings').then(res => setSettings(res.data)).catch(() => {});
+    axios.get('https://streaming-store-api.onrender.com/api/products').then(res => setProducts(res.data));
+    axios.get('https://streaming-store-api.onrender.com/api/banners').then(res => setBanners(res.data));
+    axios.get('https://streaming-store-api.onrender.com/api/settings').then(res => setSettings(res.data)).catch(() => {});
   }, []);
 
   // Rotação automática dos banners
@@ -79,10 +121,14 @@ export default function Storefront() {
     'Adultos'
   ];
 
+  const searchQuery = searchParams.get('search')?.toLowerCase() || '';
+
   // Filtrar produtos
-  const filteredProducts = activeCategory === 'Todos' 
-    ? products 
-    : products.filter(p => p.category === activeCategory);
+  const filteredProducts = products.filter(p => {
+    const matchesCategory = activeCategory === 'Todos' || p.category === activeCategory;
+    const matchesSearch = !searchQuery || p.name.toLowerCase().includes(searchQuery) || (p.description && p.description.toLowerCase().includes(searchQuery));
+    return matchesCategory && matchesSearch;
+  });
 
   const prevBanner = () => setCurrentBannerIdx(prev => (prev - 1 + banners.length) % banners.length);
   const nextBanner = () => setCurrentBannerIdx(prev => (prev + 1) % banners.length);
@@ -292,7 +338,7 @@ export default function Storefront() {
                       onClick={() => {
                         setSelectedProductDetail(product);
                         // Buscar avaliações do produto
-                        axios.get(`http://192.168.1.5:3001/api/products/${product.id}/reviews`)
+                        axios.get(`https://streaming-store-api.onrender.com/api/products/${product.id}/reviews`)
                           .then(res => setProductReviews(res.data))
                           .catch(() => setProductReviews([]));
                       }}
@@ -425,6 +471,25 @@ export default function Storefront() {
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* CTA AFILIADOS */}
+          <div className="mt-16 bg-gradient-to-r from-primary/20 via-primary/10 to-transparent border border-primary/20 rounded-3xl p-8 md:p-12 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group shadow-2xl">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-primary/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
+            <div className="relative z-10 flex-1 text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start gap-3 mb-4">
+                <div className="bg-yellow-500/20 p-3 rounded-full border border-yellow-500/30">
+                  <Trophy className="text-yellow-500" size={32} />
+                </div>
+                <h3 className="text-3xl font-black text-gray-900 dark:text-white uppercase tracking-tight">Programa de Parceiros</h3>
+              </div>
+              <p className="text-gray-600 dark:text-gray-400 max-w-xl text-lg leading-relaxed">
+                Indique nossa loja para seus amigos e seguidores e ganhe <strong className="text-primary">dinheiro direto na sua carteira digital</strong> por cada compra realizada. Comece a lucrar hoje mesmo!
+              </p>
+            </div>
+            <Link to="/dashboard" onClick={() => window.scrollTo(0,0)} className="relative z-10 flex-shrink-0 bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-wider py-4 px-10 rounded-xl transition-all shadow-[0_0_20px_rgba(var(--color-primary-rgb),0.3)] hover:shadow-[0_0_40px_rgba(var(--color-primary-rgb),0.5)] flex items-center justify-center gap-3 hover:-translate-y-1">
+              Quero ser Afiliado <ChevronRight size={24} />
+            </Link>
           </div>
 
           {/* Features Section */}
@@ -639,9 +704,11 @@ export default function Storefront() {
 
                 {/* Descrição completa */}
                 {p.description && (
-                  <div className="mb-6">
-                    <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Descrição</h4>
-                    <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-line">{p.description}</p>
+                  <div className="mb-6 bg-black/30 p-4 rounded-xl border border-white/5 shadow-inner">
+                    <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <FileText size={14} className="text-primary" /> Detalhes do Produto
+                    </h4>
+                    <RichDescription text={p.description} />
                   </div>
                 )}
 

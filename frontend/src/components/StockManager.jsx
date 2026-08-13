@@ -34,7 +34,7 @@ export default function StockManager({ products, credentials, onSuccess }) {
       const contentString = JSON.stringify(credObj);
       const contents = Array.from({ length: multiplier }).fill(contentString);
 
-      await axios.post('http://192.168.1.5:3001/api/credentials', {
+      await axios.post('https://streaming-store-api.onrender.com/api/credentials', {
         productId: selectedProductId,
         variationId: hasVariations ? selectedVariationId : null,
         contents
@@ -52,7 +52,7 @@ export default function StockManager({ products, credentials, onSuccess }) {
   const handleDelete = async (id) => {
     if (!window.confirm('Excluir esta credencial?')) return;
     try {
-      await axios.delete(`http://192.168.1.5:3001/api/credentials/${id}`);
+      await axios.delete(`https://streaming-store-api.onrender.com/api/credentials/${id}`);
       onSuccess();
     } catch (err) {
       alert('Erro ao excluir.');

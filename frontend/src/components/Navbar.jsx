@@ -1,15 +1,19 @@
 import React, { useContext, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { createPortal } from 'react-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ShoppingCart, User, Wallet, LogOut, Search, Sun, Moon, Edit, Camera, Key } from 'lucide-react';
 import { AuthContext } from '../contexts/AuthContext';
 import { CartContext } from '../contexts/CartContext';
 import { ThemeContext } from '../contexts/ThemeContext';
+import { SettingsContext } from '../contexts/SettingsContext';
 import axios from 'axios';
+import ImageUploader from '../components/ImageUploader';
 
 export default function Navbar({ onSearch }) {
   const { user, logout, setUser } = useContext(AuthContext);
   const { cartCount, setIsCartOpen } = useContext(CartContext);
   const { theme, toggleTheme } = useContext(ThemeContext);
+  const { settings } = useContext(SettingsContext);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Profile State
@@ -21,16 +25,22 @@ export default function Navbar({ onSearch }) {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [avatarForm, setAvatarForm] = useState({ avatarUrl: '' });
 
+  const navigate = useNavigate();
+
   const handleSearch = (e) => {
     e.preventDefault();
-    if (onSearch) onSearch(searchTerm);
+    if (searchTerm.trim()) {
+      navigate(`/?search=${encodeURIComponent(searchTerm)}`);
+    } else {
+      navigate(`/`);
+    }
   };
 
   const handleChangeProfile = async (e) => {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.put('http://192.168.1.5:3001/api/users/me/profile', profileForm, {
+      const res = await axios.put('https://streaming-store-api.onrender.com/api/users/me/profile', profileForm, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUser(res.data.user);
@@ -45,7 +55,7 @@ export default function Navbar({ onSearch }) {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      await axios.put('http://192.168.1.5:3001/api/users/me/password', passwordForm, {
+      await axios.put('https://streaming-store-api.onrender.com/api/users/me/password', passwordForm, {
         headers: { Authorization: `Bearer ${token}` }
       });
       alert('Senha alterada com sucesso!');
@@ -60,7 +70,7 @@ export default function Navbar({ onSearch }) {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.put('http://192.168.1.5:3001/api/users/me/avatar', avatarForm, {
+      const res = await axios.put('https://streaming-store-api.onrender.com/api/users/me/avatar', avatarForm, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUser(res.data.user);
@@ -76,8 +86,14 @@ export default function Navbar({ onSearch }) {
     <nav className="w-full bg-white/80 dark:bg-black/80 backdrop-blur-xl border-b border-gray-200 dark:border-white/10 sticky top-0 z-50 transition-colors duration-300">
       <div className="container mx-auto px-4 h-20 flex items-center justify-between">
         {/* LOGO */}
-        <Link to="/" className="text-2xl font-black text-primary tracking-tighter">
-          STREAM<span className="text-gray-900 dark:text-white">STORE</span>
+        <Link to="/" className="flex items-center gap-2">
+          {settings?.logo_url ? (
+            <img src={settings.logo_url} alt="Logo" className="h-20 md:h-24 w-auto object-contain" />
+          ) : (
+            <span className="text-2xl font-black text-primary tracking-tighter">
+              STREAM<span className="text-gray-900 dark:text-white">STORE</span>
+            </span>
+          )}
         </Link>
 
         {/* LUPA DE PESQUISA */}
@@ -191,9 +207,9 @@ export default function Navbar({ onSearch }) {
         </form>
       </div>
       {/* PROFILE MODAL */}
-      {isProfileModalOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-md p-6">
+      {isProfileModalOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-md p-6 relative z-[10000]">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Editar Perfil</h3>
             <form onSubmit={handleChangeProfile} className="space-y-4">
               <div>
@@ -222,13 +238,14 @@ export default function Navbar({ onSearch }) {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* PASSWORD MODAL */}
-      {isPasswordModalOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-md p-6">
+      {isPasswordModalOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-md p-6 relative z-[10000]">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Mudar Senha</h3>
             <form onSubmit={handleChangePassword} className="space-y-4">
               <div>
@@ -257,26 +274,24 @@ export default function Navbar({ onSearch }) {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* AVATAR MODAL */}
-      {isAvatarModalOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-md p-6">
+      {isAvatarModalOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-md p-6 relative z-[10000]">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Trocar Foto de Perfil</h3>
             <form onSubmit={handleChangeAvatar} className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">URL da Imagem</label>
-                <input 
-                  type="url" 
-                  required 
+                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Foto de Perfil (URL ou Upload)</label>
+                <ImageUploader 
                   value={avatarForm.avatarUrl} 
-                  onChange={e => setAvatarForm({...avatarForm, avatarUrl: e.target.value})} 
-                  placeholder="https://..."
-                  className="w-full bg-gray-50 dark:bg-black/50 border border-gray-200 dark:border-white/10 rounded-lg px-4 py-2 text-gray-900 dark:text-white focus:outline-none focus:border-primary"
+                  onChange={val => setAvatarForm({...avatarForm, avatarUrl: val})} 
+                  placeholder="https://..." 
+                  className="w-full"
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">Dica: Cole um link direto de uma imagem (.png ou .jpg)</p>
               </div>
               <div className="flex gap-4 pt-4 mt-6">
                 <button type="button" onClick={() => setIsAvatarModalOpen(false)} className="w-1/2 py-2 rounded-lg font-medium bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-900 dark:text-white transition-colors">Cancelar</button>
@@ -284,7 +299,8 @@ export default function Navbar({ onSearch }) {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </nav>
   );

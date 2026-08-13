@@ -47,7 +47,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get('http://192.168.1.5:3001/api/stats')
+    axios.get('https://streaming-store-api.onrender.com/api/stats')
       .then(res => { setStats(res.data); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);

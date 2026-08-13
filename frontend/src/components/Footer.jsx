@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck, HeartHandshake, Zap, MessageCircle } from 'lucide-react';
+import { SettingsContext } from '../contexts/SettingsContext';
 
 export default function Footer() {
+  const { settings } = useContext(SettingsContext);
+
   return (
     <footer className="bg-black/90 border-t border-white/10 pt-16 pb-8 mt-auto">
       <div className="container mx-auto px-4">
@@ -10,8 +13,14 @@ export default function Footer() {
           
           {/* Coluna 1: Logo e Sobre */}
           <div className="col-span-1 md:col-span-1">
-            <Link to="/" className="text-2xl font-black text-primary tracking-tighter block mb-4">
-              STREAM<span className="text-white">STORE</span>
+            <Link to="/" className="block mb-4">
+              {settings?.logo_url ? (
+                <img src={settings.logo_url} alt="Logo" className="h-16 md:h-20 w-auto object-contain" />
+              ) : (
+                <span className="text-2xl font-black text-primary tracking-tighter">
+                  STREAM<span className="text-white">STORE</span>
+                </span>
+              )}
             </Link>
             <p className="text-gray-400 text-sm mb-6">
               Sua plataforma premium para acesso instantâneo aos melhores serviços de streaming, combos e ferramentas digitais.

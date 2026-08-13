@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../contexts/AuthContext';
+import { SettingsContext } from '../contexts/SettingsContext';
 import { Navigate } from 'react-router-dom';
-import { Wallet, Package, Trophy, Clock, CheckCircle, Edit, Camera, Key, Star } from 'lucide-react';
+import { Wallet, Package, Trophy, Clock, CheckCircle, Edit, Camera, Key, Star, ExternalLink, Link as LinkIcon } from 'lucide-react';
 
 export default function ClientDashboard() {
   const { user, loading } = useContext(AuthContext);
+  const { settings } = useContext(SettingsContext);
   const [orders, setOrders] = useState([]);
   const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'affiliate'
   const [affiliateData, setAffiliateData] = useState(null);
@@ -18,26 +20,18 @@ export default function ClientDashboard() {
 
   useEffect(() => {
     if (user) {
-      const token = localStorage.getItem('token');
-      // Buscar histórico do usuário
-      axios.get('http://192.168.1.5:3001/api/users/me/orders', {
-        headers: { Authorization: `Bearer ${token}` }
-      }).then(res => setOrders(res.data)).catch(console.error);
+      axios.get('https://streaming-store-api.onrender.com/api/orders', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      }).then(res => setOrders(res.data));
 
-      // Buscar dados de afiliado
-      if (activeTab === 'affiliate') {
-        axios.get('http://192.168.1.5:3001/api/users/me/affiliate', {
-          headers: { Authorization: `Bearer ${token}` }
-        }).then(res => setAffiliateData(res.data)).catch(console.error);
-      }
+      axios.get('https://streaming-store-api.onrender.com/api/users/me/affiliate', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      }).then(res => setAffiliateData(res.data));
     }
-  }, [user, activeTab]);
-
-  if (loading) return <div className="p-8 text-center text-white">Carregando...</div>;
-  if (!user) return <Navigate to="/login" />;
+  }, [user]);
 
   const handleCopyLink = () => {
-    if (affiliateData?.affiliateCode) {
+    if (affiliateData) {
       const link = `${window.location.origin}/login?ref=${affiliateData.affiliateCode}`;
       navigator.clipboard.writeText(link);
       setCopySuccess(true);
@@ -47,86 +41,118 @@ export default function ClientDashboard() {
 
   const handleReviewSubmit = async (e) => {
     e.preventDefault();
-    if (!reviewProduct) return;
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`http://192.168.1.5:3001/api/products/${reviewProduct.id}/reviews`, reviewForm, {
+      await axios.post(`https://streaming-store-api.onrender.com/api/reviews/${reviewProduct.id}`, reviewForm, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert('Avaliação enviada com sucesso! Obrigado.');
+      alert('Avaliação enviada com sucesso! Agradecemos o seu feedback.');
       setReviewModalOpen(false);
-      setReviewProduct(null);
       setReviewForm({ rating: 5, comment: '' });
     } catch (error) {
-      alert(error.response?.data?.error || 'Erro ao enviar avaliação');
+      alert(error.response?.data?.error || 'Erro ao enviar avaliação.');
     }
   };
 
+  if (loading) return <div className="p-8 text-center text-white">Carregando...</div>;
+  if (!user) return <Navigate to="/login" />;
+
+  const isAffiliatePercentage = settings?.affiliate_type === 'PERCENTAGE';
+  const affiliateValueDisplay = isAffiliatePercentage 
+    ? `${settings?.affiliate_value}%` 
+    : `R$ ${parseFloat(settings?.affiliate_value || 0).toFixed(2).replace('.', ',')}`;
+
   return (
-    <div className="container mx-auto px-4 py-12 max-w-6xl">
+    <div className="container mx-auto p-4 md:p-8 max-w-6xl mt-20">
+      
       <div className="flex flex-col md:flex-row gap-8">
         
-        {/* COLUNA ESQUERDA: Carteira e Pedidos */}
-        <div className="flex-1 space-y-8">
-          {/* CARTEIRA */}
-          <div className="glass-card p-8 bg-gradient-to-br from-black to-card relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/20 rounded-full mix-blend-screen filter blur-2xl"></div>
-            <div className="flex items-center gap-4 mb-4 relative z-10">
-              <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary">
-                <Wallet size={24} />
-              </div>
-              <div>
-                <h2 className="text-gray-400 text-sm font-bold uppercase tracking-wider">Saldo na Carteira</h2>
-                <div className="text-3xl font-black text-white">
-                  R$ {(user.walletBalance / 100).toFixed(2).replace('.', ',')}
-                </div>
-              </div>
+        {/* SIDEBAR */}
+        <div className="w-full md:w-80 flex-shrink-0 space-y-6">
+          <div className="glass-card p-6 flex flex-col items-center text-center">
+            <div className="w-24 h-24 bg-gradient-to-br from-primary to-primary/50 rounded-full flex items-center justify-center mb-4 overflow-hidden border-2 border-primary/20">
+              {user.avatarUrl ? (
+                <img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-3xl font-black text-white">{user.name.charAt(0)}</span>
+              )}
             </div>
-            <p className="text-sm text-gray-500 relative z-10">
-              O seu saldo de reembolsos e recompensas de afiliados cai direto aqui e pode ser usado automaticamente em novas compras.
-            </p>
+            <h2 className="text-xl font-bold text-white mb-1">{user.name}</h2>
+            <p className="text-sm text-gray-400 mb-6">{user.email}</p>
+            
+            <div className="w-full bg-black/50 rounded-xl p-4 border border-white/5 mb-4">
+              <div className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-1">Saldo da Carteira</div>
+              <div className="text-3xl font-black text-primary">R$ {(user.walletBalance / 100).toFixed(2).replace('.', ',')}</div>
+            </div>
           </div>
-
-          <div className="flex gap-4 border-b border-white/10 pb-4">
-            <button onClick={() => setActiveTab('orders')} className={`font-bold transition-colors ${activeTab === 'orders' ? 'text-primary' : 'text-gray-500 hover:text-white'}`}>
-              Meus Pedidos
+          
+          <div className="glass-card p-2 flex flex-col gap-1">
+            <button 
+              onClick={() => setActiveTab('orders')}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${
+                activeTab === 'orders' ? 'bg-primary/20 text-primary' : 'text-gray-400 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              <Package size={20} /> Meus Pedidos
             </button>
-            <button onClick={() => setActiveTab('affiliate')} className={`font-bold transition-colors ${activeTab === 'affiliate' ? 'text-primary' : 'text-gray-500 hover:text-white'}`}>
-              Afiliados (Ganhe Dinheiro)
+            <button 
+              onClick={() => setActiveTab('affiliate')}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold ${
+                activeTab === 'affiliate' ? 'bg-yellow-500/20 text-yellow-500' : 'text-gray-400 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              <Trophy size={20} /> Indique e Ganhe
             </button>
           </div>
+        </div>
 
+        {/* CONTENT */}
+        <div className="flex-1">
+          {/* AFILIADOS */}
           {activeTab === 'affiliate' && (
-            <div className="glass-card p-8 text-center text-white space-y-6">
-              <Trophy size={48} className="text-yellow-500 mx-auto" />
-              <h2 className="text-2xl font-black">Indique e Ganhe!</h2>
-              <p className="text-gray-400 max-w-md mx-auto">
-                Ganhe recompensas em saldo na sua carteira toda vez que alguém se cadastrar e comprar usando seu link exclusivo.
-              </p>
+            <div className="glass-card p-8 text-white space-y-8 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+              
+              <div className="text-center relative z-10 space-y-4">
+                <div className="w-20 h-20 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto border border-yellow-500/30">
+                  <Trophy size={40} className="text-yellow-500" />
+                </div>
+                <h2 className="text-3xl font-black">Seja um Parceiro!</h2>
+                <p className="text-gray-400 max-w-lg mx-auto text-lg">
+                  Ganhe <strong className="text-yellow-500">{affiliateValueDisplay}</strong> direto na sua carteira toda vez que alguém se cadastrar e comprar usando seu link exclusivo!
+                </p>
+              </div>
               
               {affiliateData ? (
-                <div className="bg-black/50 p-6 rounded-xl border border-white/10 mt-6 max-w-lg mx-auto">
-                  <div className="text-sm text-gray-400 mb-2">Seu Link de Indicação</div>
-                  <div className="flex gap-2">
+                <div className="bg-black/60 p-8 rounded-2xl border border-white/10 mt-8 max-w-2xl mx-auto relative z-10 shadow-2xl">
+                  <div className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <LinkIcon size={16} /> Seu Link de Indicação Exclusivo
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3">
                     <input 
                       type="text" 
                       readOnly 
                       value={`${window.location.origin}/login?ref=${affiliateData.affiliateCode}`}
-                      className="flex-1 bg-black border border-white/10 rounded-lg px-4 py-2 text-primary font-mono text-sm"
+                      className="flex-1 bg-black border border-white/10 rounded-xl px-5 py-4 text-primary font-mono text-sm focus:outline-none focus:border-primary/50 transition-colors"
                     />
-                    <button onClick={handleCopyLink} className="bg-primary hover:bg-primary/80 text-white px-4 py-2 rounded-lg font-bold transition-colors">
-                      {copySuccess ? 'Copiado!' : 'Copiar'}
+                    <button onClick={handleCopyLink} className="bg-primary hover:bg-primary/80 text-white px-8 py-4 rounded-xl font-bold transition-colors shadow-lg shadow-primary/20 flex items-center justify-center gap-2 min-w-[140px]">
+                      {copySuccess ? <><CheckCircle size={18} /> Copiado</> : 'Copiar Link'}
                     </button>
                   </div>
-                  <div className="mt-6 flex justify-around border-t border-white/10 pt-6">
-                    <div>
-                      <div className="text-3xl font-black text-white">{affiliateData.referralsCount}</div>
-                      <div className="text-xs text-gray-400">Indicados</div>
+                  <p className="text-xs text-gray-500 mt-3">Compartilhe este link no WhatsApp, Instagram, Telegram ou onde quiser.</p>
+                  
+                  <div className="mt-8 flex justify-around border-t border-white/10 pt-8">
+                    <div className="text-center">
+                      <div className="text-4xl font-black text-white mb-1">{affiliateData.referralsCount}</div>
+                      <div className="text-sm text-gray-400 uppercase tracking-wider font-bold">Amigos Indicados</div>
                     </div>
                   </div>
                 </div>
               ) : (
-                <p>Carregando dados de afiliado...</p>
+                <div className="text-center p-8">
+                  <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                  <p className="text-gray-400">Carregando seus dados de parceiro...</p>
+                </div>
               )}
             </div>
           )}
@@ -231,7 +257,7 @@ export default function ClientDashboard() {
                                       <div key={cIdx} className="bg-black/60 rounded-lg p-4 border border-white/5 relative">
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-4 text-sm">
                                           <div className="text-gray-300 flex items-center">
-                                            <span className="mr-2">⚜️</span> <span className="font-bold text-gray-500 mr-1">Serviço:</span> <span className="text-white font-bold">{i.product.name} {i.variation ? `(${i.variation.name})` : ''}</span>
+                                            <span className="mr-2">⚜️</span> <span className="font-bold text-gray-500 mr-1">Serviço:</span> <span className="text-white font-bold">{c.product?.name || i.product.name} {i.variation ? `(${i.variation.name})` : ''}</span>
                                           </div>
                                           <div className="text-gray-300 flex items-center">
                                             <span className="mr-2">🎫</span> <span className="font-bold text-gray-500 mr-1">ID da compra:</span> #{order.id + 31794}

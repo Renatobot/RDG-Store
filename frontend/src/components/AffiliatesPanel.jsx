@@ -21,7 +21,7 @@ export default function AffiliatesPanel() {
   const fetchAffiliates = async () => {
     setLoading(true);
     try {
-      const res = await axios.get('http://192.168.1.5:3001/api/admin/affiliates');
+      const res = await axios.get('https://streaming-store-api.onrender.com/api/admin/affiliates');
       setAffiliates(res.data);
     } catch (err) {
       setError('Erro ao carregar afiliados.');
