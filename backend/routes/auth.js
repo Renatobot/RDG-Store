@@ -66,7 +66,15 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await prisma.user.findUnique({ where: { email } });
+    if (!email || !password) return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
+
+    const cleanEmail = email.trim();
+    const user = await prisma.user.findFirst({
+      where: {
+        email: { equals: cleanEmail, mode: 'insensitive' }
+      }
+    });
+
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
     if (user.role === 'BANNED') return res.status(403).json({ error: 'Sua conta foi suspensa por violar os termos de uso.' });
     
@@ -76,6 +84,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, walletBalance: user.walletBalance, role: user.role, isVip: user.isVip } });
   } catch (error) {
+    console.error('Login error:', error);
     res.status(500).json({ error: error.message });
   }
 });
