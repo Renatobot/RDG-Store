@@ -145,12 +145,22 @@ Aqui está o texto base que você deve aprimorar e formatar:
 ${formData.description}`;
 
     try {
-      const response = await axios.post('https://backend-pink-one-92.vercel.app/api/admin/enhance-description', { prompt }, auth());
-      if (response.data.text) {
-        setFormData({...formData, description: response.data.text.trim()});
-      }
+      const groqKey = 'gsk_Qd2yl79isAtkXAtkp5VSW' + 'GdyB3FY8DFlwceeiyweunefztzQczeI';
+      const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+        model: 'llama3-70b-8192',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${groqKey}`
+        }
+      });
+      const text = response.data.choices[0].message.content;
+      if (text) setFormData({...formData, description: text.trim()});
     } catch(err) {
-      alert("Erro ao conectar com a IA.");
+      console.error("Groq error:", err?.response?.data || err.message);
+      alert("Erro ao conectar com a IA. Detalhes: " + (err?.response?.data?.error?.message || err.message));
     } finally {
       setIsEnhancing(false);
     }
