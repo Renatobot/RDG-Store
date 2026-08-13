@@ -57,8 +57,8 @@ const RichDescription = ({ text }) => {
            );
         }
         
-        if (trimmedLine.startsWith('-') || trimmedLine.startsWith('*')) {
-          const content = trimmedLine.substring(1).trim();
+        if (/^[-*✅✔️]/.test(trimmedLine)) {
+          const content = trimmedLine.replace(/^[-*✅✔️]\s*/, '').trim();
           return (
             <div key={idx} className="flex items-center gap-3 bg-white/5 dark:bg-black/40 p-3.5 rounded-xl border border-white/10 shadow-inner hover:border-primary/30 transition-colors">
               <CheckCircle size={18} className="text-primary shrink-0" />
@@ -90,6 +90,12 @@ const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCa
   const originalPrice = selectedVariation ? selectedVariation.originalPrice : p.originalPrice;
   const validity = selectedVariation ? selectedVariation.validity : p.validity;
 
+  // Produtos relacionados: mesma categoria ou fallback aleatório
+  const sameCategory = products.filter(rel => rel.category === p.category && rel.id !== p.id);
+  const displayRelated = sameCategory.length > 0 
+    ? sameCategory.slice(0, 4) 
+    : products.filter(rel => rel.id !== p.id).sort(() => 0.5 - Math.random()).slice(0, 4);
+
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md" onClick={onClose}>
       <div className="glass-card w-full max-w-5xl h-[95vh] rounded-3xl overflow-hidden flex flex-col md:flex-row relative animate-in fade-in zoom-in duration-200 shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -103,14 +109,13 @@ const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCa
 
           {/* Imagem */}
           {p.imageUrl && (
-            <div className="w-full aspect-[16/9] md:aspect-video bg-black relative border-b border-white/5">
-              <img src={p.imageUrl} alt={p.name} className="w-full h-full object-contain bg-black opacity-90" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0f1014] to-transparent pointer-events-none"></div>
+            <div className="w-full aspect-[16/9] md:aspect-video bg-[#0a0a0c] relative border-b border-white/5 flex items-center justify-center">
+              <img src={p.imageUrl} alt={p.name} className="w-full h-full object-contain" />
               {p.badge && <div className="absolute top-4 left-4 bg-primary text-white text-xs font-black px-3 py-1.5 rounded-md shadow-lg uppercase tracking-wider">{p.badge}</div>}
             </div>
           )}
 
-          <div className="p-5 md:p-8 -mt-6 md:-mt-10 relative z-10">
+          <div className="p-6 md:p-10 relative z-10">
             {/* Header */}
             <h2 className="text-3xl font-black text-white mb-3 leading-tight drop-shadow-md">{p.name}</h2>
             <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-6 md:mb-8">
@@ -158,7 +163,7 @@ const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCa
             <div className="mt-12 pt-8 border-t border-white/10">
               <h4 className="text-sm font-black text-white uppercase tracking-wider mb-6">Você também pode gostar</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {products.filter(rel => rel.category === p.category && rel.id !== p.id).slice(0, 4).map(rel => (
+                {displayRelated.map(rel => (
                   <button 
                     key={rel.id} 
                     onClick={() => {
@@ -184,7 +189,7 @@ const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCa
         </div>
 
         {/* LADO DIREITO: Checkout (Sticky) */}
-        <div className="w-full md:w-2/5 p-5 md:p-8 bg-[#16181d] border-t md:border-t-0 md:border-l border-white/5 flex flex-col relative md:overflow-y-auto custom-scrollbar shrink-0 md:shrink">
+        <div className="w-full md:w-2/5 p-5 md:p-8 bg-[#0f1014] flex flex-col relative md:overflow-y-auto custom-scrollbar shrink-0 md:shrink">
           {/* Botão fechar (Desktop) */}
           <button onClick={onClose} className="hidden md:block absolute top-4 right-4 z-10 text-gray-400 hover:text-white bg-black/30 hover:bg-white/10 p-2 rounded-full transition-colors">
             <X size={20} />
@@ -214,12 +219,12 @@ const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCa
                           key={v.id}
                           disabled={isVarOutOfStock}
                           onClick={() => setSelectedVariation(v)}
-                          className={`w-full text-left p-3.5 md:p-4 rounded-2xl transition-all flex items-center justify-between border-2 ${
+                          className={`w-full text-left p-3.5 md:p-4 rounded-2xl transition-all flex items-center justify-between border ${
                             isVarOutOfStock 
                               ? 'opacity-50 cursor-not-allowed border-white/5 bg-black/20'
                               : isSelected
                                 ? 'border-primary bg-primary/10 shadow-[0_0_15px_rgba(var(--color-primary-rgb),0.15)]'
-                                : 'border-white/5 hover:border-white/20 bg-black/40 hover:bg-black/60'
+                                : 'border-white/10 hover:border-white/30 bg-black/40 hover:bg-black/60'
                           }`}
                         >
                           <div className="flex items-center gap-3">
@@ -245,7 +250,7 @@ const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCa
                 )}
 
                 {/* Bloco de Preço Final */}
-                <div className="mb-6 p-5 md:p-6 bg-black/40 border border-white/5 rounded-3xl">
+                <div className="mb-6 p-5 md:p-6 bg-[#0a0a0c] border border-white/5 rounded-2xl">
                    <div className="text-gray-400 text-xs md:text-sm font-bold mb-1">Total a pagar</div>
                    <div className="flex items-end gap-3">
                      <div className="text-3xl md:text-4xl font-black text-primary leading-none">R$ {(price/100).toFixed(2).replace('.', ',')}</div>
