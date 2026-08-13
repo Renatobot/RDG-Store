@@ -145,16 +145,9 @@ Aqui está o texto base que você deve aprimorar e formatar:
 ${formData.description}`;
 
     try {
-      const response = await fetch('https://text.pollinations.ai/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [{ role: 'user', content: prompt }]
-        })
-      });
-      const data = await response.text();
-      if (data) {
-        setFormData({...formData, description: data.trim()});
+      const response = await axios.post('https://streaming-store-api.onrender.com/api/admin/enhance-description', { prompt }, auth());
+      if (response.data.text) {
+        setFormData({...formData, description: response.data.text.trim()});
       }
     } catch(err) {
       alert("Erro ao conectar com a IA.");

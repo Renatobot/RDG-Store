@@ -275,7 +275,26 @@ app.post('/api/products/:id/reviews', async (req, res) => {
     });
     res.json(review);
   } catch (error) {
-    res.status(500).json({ error: 'Erro ao enviar avaliação' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/enhance-description', authenticateToken, async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    const response = await axios.post('https://text.pollinations.ai/', {
+      messages: [{ role: 'user', content: prompt }]
+    }, {
+      headers: { 'Content-Type': 'application/json' }
+    });
+    // Pollinations usually returns the text directly in response.data when not using JSON mode, 
+    // but if it returns an object, we should extract it. Usually it's raw text for the new endpoint.
+    let text = typeof response.data === 'string' ? response.data : 
+               (response.data.choices?.[0]?.message?.content || JSON.stringify(response.data));
+    res.json({ text });
+  } catch (error) {
+    console.error("Erro na IA:", error?.response?.data || error.message);
+    res.status(500).json({ error: 'Erro ao gerar texto com IA.' });
   }
 });
 
