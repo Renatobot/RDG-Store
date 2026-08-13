@@ -816,26 +816,18 @@ ${formData.description}`;
                         </div>
                         <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-bold">Link de Cobrança</span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <Field label="Handle / Tag da Loja">
-                          <input
-                            type="text"
-                            value={settings.infinitepay_handle || ''}
-                            onChange={e => setSettings({ ...settings, infinitepay_handle: e.target.value })}
-                            placeholder="ex: rdgdigital"
-                            className={inp}
-                          />
-                        </Field>
-                        <Field label="API Key (Opcional)">
-                          <input
-                            type="password"
-                            value={settings.infinitepay_api_key || ''}
-                            onChange={e => setSettings({ ...settings, infinitepay_api_key: e.target.value })}
-                            placeholder="Token JWT ou Chave API"
-                            className={inp}
-                          />
-                        </Field>
-                      </div>
+                      <Field label="InfiniteTag / Handle da Loja">
+                        <input
+                          type="text"
+                          value={settings.infinitepay_handle || ''}
+                          onChange={e => setSettings({ ...settings, infinitepay_handle: e.target.value })}
+                          placeholder="ex: rdgdigital (sem o @ ou $)"
+                          className={inp}
+                        />
+                        <p className="text-[11px] text-gray-500 mt-1">
+                          A InfinitePay não exige chave de API. Basta colocar sua <strong>InfiniteTag</strong> (seu nome de usuário no app InfinitePay).
+                        </p>
+                      </Field>
                       <div className="mt-3 p-2.5 bg-black/40 rounded-lg border border-white/5 flex items-center justify-between gap-2">
                         <div className="overflow-hidden">
                           <div className="text-[10px] text-gray-500 uppercase font-bold">Webhook URL (InfinitePay):</div>
