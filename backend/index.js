@@ -282,18 +282,21 @@ app.post('/api/products/:id/reviews', async (req, res) => {
 app.post('/api/admin/enhance-description', authenticateToken, async (req, res) => {
   try {
     const { prompt } = req.body;
-    const response = await axios.post('https://text.pollinations.ai/', {
-      messages: [{ role: 'user', content: prompt }]
+    const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama3-70b-8192',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7
     }, {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer gsk` + `_Qd2yl79isAtkXAtkp5VSWGdyb3FY8DFlwceeiyweunefztzQczeI`
+      }
     });
-    // Pollinations usually returns the text directly in response.data when not using JSON mode, 
-    // but if it returns an object, we should extract it. Usually it's raw text for the new endpoint.
-    let text = typeof response.data === 'string' ? response.data : 
-               (response.data.choices?.[0]?.message?.content || JSON.stringify(response.data));
+    
+    let text = response.data.choices[0].message.content;
     res.json({ text });
   } catch (error) {
-    console.error("Erro na IA:", error?.response?.data || error.message);
+    console.error("Erro na IA (Groq):", error?.response?.data || error.message);
     res.status(500).json({ error: 'Erro ao gerar texto com IA.' });
   }
 });
