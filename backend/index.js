@@ -711,10 +711,12 @@ const createAsaasPayment = async ({ orderNsu, amountInCents, description, custom
 
 // 4. InfinitePay (Checkout Link)
 const createInfinitePayPayment = async ({ orderNsu, amountInCents, description, customerName, customerWhatsapp, webhookUrl, handle, apiKey }) => {
+  const frontendUrl = process.env.FRONTEND_URL || 'https://loja.rdgdigital.com.br';
   const payload = {
     handle: handle,
     order_nsu: orderNsu.toString(),
     webhook_url: webhookUrl,
+    redirect_url: `${frontendUrl}/dashboard`,
     items: [
       {
         quantity: 1,
