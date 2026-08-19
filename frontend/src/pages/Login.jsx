@@ -11,7 +11,13 @@ export default function Login() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (user) navigate('/dashboard');
+    if (user) {
+      if (user.role === 'ADMIN') {
+        navigate('/admin');
+      } else {
+        navigate('/dashboard');
+      }
+    }
   }, [user, navigate]);
 
   const handleSubmit = async (e) => {

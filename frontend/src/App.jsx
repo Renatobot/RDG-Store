@@ -53,7 +53,7 @@ function AppContent() {
       <div className="flex-1">
         <Routes>
           <Route path="/" element={<Storefront />} />
-          <Route path="/checkout" element={<Checkout />} />
+          <Route path="/checkout" element={<PrivateRoute><Checkout /></PrivateRoute>} />
           <Route path="/admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
           <Route path="/login" element={<Login />} />
           <Route path="/dashboard" element={<PrivateRoute><ClientDashboard /></PrivateRoute>} />

@@ -7,6 +7,18 @@ import { Wallet, Package, Trophy, Clock, CheckCircle, Edit, Camera, Key, Star, E
 import PixModal from '../components/PixModal';
 import { API_BASE } from '../api';
 
+const renderTextWithLinks = (text) => {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, i) => {
+    if (part.match(urlRegex)) {
+      return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-all inline-block mt-1">{part}</a>;
+    }
+    return <span key={i}>{part}</span>;
+  });
+};
+
 export default function ClientDashboard() {
   const { user, setUser, loading } = useContext(AuthContext);
   const { settings } = useContext(SettingsContext);
@@ -256,13 +268,13 @@ export default function ClientDashboard() {
                       <div>
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-sm text-gray-400 font-medium">Pedido #{order.id + 31794}</span>
-                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-sm ${
-                            order.status === 'PAGO' ? 'bg-green-500/20 text-green-500' :
-                            order.status === 'ENTREGUE' ? 'bg-blue-500/20 text-blue-500' :
-                            order.status === 'CANCELADO' ? 'bg-red-500/20 text-red-500' :
-                            'bg-yellow-500/20 text-yellow-500'
+                          <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border ${
+                            order.status === 'PAGO' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
+                            order.status === 'ENTREGUE' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
+                            order.status === 'CANCELADO' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                            'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                           }`}>
-                            {order.status}
+                            {order.status === 'PAGO' ? 'Pago (Aguardando Entrega)' : order.status === 'ENTREGUE' ? 'Entregue' : order.status}
                           </span>
                         </div>
                         <div className="text-white font-bold text-sm">
@@ -277,6 +289,11 @@ export default function ClientDashboard() {
                         <div className="text-xl font-black text-white">
                           R$ {((order.pricePaid + order.walletUsed) / 100).toFixed(2).replace('.', ',')}
                         </div>
+                        {order.couponCode && order.discountAmount > 0 && (
+                          <div className="text-xs text-green-400 font-medium mt-1">
+                            (- R$ {(order.discountAmount / 100).toFixed(2).replace('.', ',')} Cupom {order.couponCode})
+                          </div>
+                        )}
                         {order.walletUsed > 0 && (
                           <div className="text-xs text-primary font-medium mt-1">
                             (- R$ {(order.walletUsed / 100).toFixed(2).replace('.', ',')} da Carteira)
@@ -285,8 +302,8 @@ export default function ClientDashboard() {
                       </div>
                     </div>
                     
-                    {/* Credenciais Entregues */}
-                    {order.status === 'ENTREGUE' && order.items.some(i => i.credentials && i.credentials.length > 0) && (
+                    {/* Credenciais Entregues ou Em Geração */}
+                    {(order.status === 'ENTREGUE' || order.status === 'PAGO') && (
                       <div className="flex flex-col gap-4">
                         {order.items.map((i, idx) => (
                           i.credentials && i.credentials.length > 0 ? (
@@ -307,23 +324,23 @@ export default function ClientDashboard() {
                                 {/* Detalhes do Acesso */}
                                 <div className="flex-1 space-y-3">
                                   {i.credentials.map((c, cIdx) => {
-                                    let email = '';
-                                    let senha = '';
-                                    let notas = 'É estritamente proibido alterar a senha, email ou criar/excluir perfis. O descumprimento gera a perda imediata da garantia sem reembolso. Em caso de dúvidas, contate o suporte informando seu ID da Compra.';
-                                    let raw = '';
+                                    let loginStr = '';
+                                    let senhaStr = '';
+                                    let notasStr = 'É estritamente proibido alterar a senha, email ou criar/excluir perfis. O descumprimento gera a perda imediata da garantia sem reembolso. Em caso de dúvidas, contate o suporte informando seu ID da Compra.';
+                                    let rawStr = '';
                                     
                                     try {
                                       const parsed = JSON.parse(c.content);
-                                      email = parsed.login || '';
-                                      senha = parsed.password || '';
-                                      if (parsed.notes) notas = parsed.notes;
+                                      loginStr = parsed.login || '';
+                                      senhaStr = parsed.password || '';
+                                      if (parsed.notes) notasStr = parsed.notes;
                                     } catch {
                                       const parts = c.content.split(':');
                                       if (parts.length >= 2 && !c.content.includes('http')) {
-                                        email = parts[0].trim();
-                                        senha = parts.slice(1).join(':').trim();
+                                        loginStr = parts[0].trim();
+                                        senhaStr = parts.slice(1).join(':').trim();
                                       } else {
-                                        raw = c.content;
+                                        rawStr = c.content;
                                       }
                                     }
 
@@ -348,14 +365,14 @@ export default function ClientDashboard() {
                                           
                                           <div className="col-span-1 sm:col-span-2 my-1 border-t border-white/5"></div>
                                           
-                                          {email && senha ? (
+                                          {loginStr && senhaStr ? (
                                             <>
                                               <div className="col-span-1 sm:col-span-2">
                                                 <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
                                                   <div className="flex items-center text-gray-300 w-24">
-                                                    <span className="mr-2">📧</span> <span className="font-bold text-gray-500">Email:</span>
+                                                    <span className="mr-2">📧</span> <span className="font-bold text-gray-500">Login:</span>
                                                   </div>
-                                                  <div className="flex-1 bg-white/5 px-4 py-2.5 rounded-lg font-mono text-white select-all border border-white/10">{email}</div>
+                                                  <div className="flex-1 bg-white/5 px-4 py-2.5 rounded-lg font-mono text-white select-all border border-white/10">{renderTextWithLinks(loginStr)}</div>
                                                 </div>
                                               </div>
                                               <div className="col-span-1 sm:col-span-2">
@@ -363,23 +380,30 @@ export default function ClientDashboard() {
                                                   <div className="flex items-center text-gray-300 w-24">
                                                     <span className="mr-2">🔐</span> <span className="font-bold text-gray-500">Senha:</span>
                                                   </div>
-                                                  <div className="flex-1 bg-white/5 px-4 py-2.5 rounded-lg font-mono text-white select-all border border-white/10">{senha}</div>
+                                                  <div className="flex-1 bg-white/5 px-4 py-2.5 rounded-lg font-mono text-white select-all border border-white/10">{renderTextWithLinks(senhaStr)}</div>
                                                 </div>
                                               </div>
                                             </>
+                                          ) : loginStr ? (
+                                            <div className="col-span-1 sm:col-span-2 flex flex-col sm:flex-row sm:items-start gap-2">
+                                              <div className="flex items-center text-gray-300 min-w-[100px] mt-1">
+                                                <span className="mr-2">🔑</span> <span className="font-bold text-gray-500">Acesso:</span>
+                                              </div>
+                                              <div className="flex-1 bg-white/5 px-3 py-2 rounded font-mono text-white select-all border border-white/10 whitespace-pre-wrap">{renderTextWithLinks(loginStr)}</div>
+                                            </div>
                                           ) : (
                                             <div className="col-span-1 sm:col-span-2 flex flex-col sm:flex-row sm:items-start gap-2">
                                               <div className="flex items-center text-gray-300 min-w-[100px] mt-1">
                                                 <span className="mr-2">🔑</span> <span className="font-bold text-gray-500">Acesso:</span>
                                               </div>
-                                              <div className="flex-1 bg-white/5 px-3 py-2 rounded font-mono text-white select-all border border-white/10 whitespace-pre-wrap">{raw || c.content}</div>
+                                              <div className="flex-1 bg-white/5 px-3 py-2 rounded font-mono text-white select-all border border-white/10 whitespace-pre-wrap">{renderTextWithLinks(rawStr || c.content)}</div>
                                             </div>
                                           )}
                                         </div>
                                         
                                         <div className="mt-4 pt-3 border-t border-white/5 flex justify-between items-center">
                                           <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap">
-                                            <span className="mr-1">📃</span> <strong className="text-gray-300">Nota:</strong> {notas}
+                                            <span className="mr-1">📃</span> <strong className="text-gray-300">Nota:</strong> {notasStr}
                                           </p>
                                           
                                           <button 
@@ -400,7 +424,17 @@ export default function ClientDashboard() {
                                 </div>
                               </div>
                             </div>
-                          ) : null
+                          ) : (
+                            <div key={idx} className="bg-gradient-to-br from-black/80 to-black/40 border border-yellow-500/30 rounded-xl p-4 shadow-[0_0_15px_rgba(234,179,8,0.1)] relative overflow-hidden">
+                              <div className="absolute top-0 left-0 w-1 h-full bg-yellow-500"></div>
+                              <h4 className="text-yellow-400 text-sm font-black mb-2 flex items-center gap-2 uppercase tracking-wide">
+                                <Clock size={16} /> Gerando Acesso...
+                              </h4>
+                              <p className="text-gray-400 text-sm ml-6">
+                                Seu acesso está sendo gerado e estará disponível em breve nesta mesma tela. Se demorar, entre em contato com o suporte informando o número do pedido.
+                              </p>
+                            </div>
+                          )
                         ))}
                       </div>
                     )}

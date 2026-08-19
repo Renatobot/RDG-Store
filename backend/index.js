@@ -11,7 +11,7 @@ BigInt.prototype.toJSON = function() { return Number(this); };
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3001;
-const { JWT_SECRET } = require('./routes/auth');
+const { JWT_SECRET, verifyToken } = require('./routes/auth');
 const authRouter = require('./routes/auth').router;
 const usersRouter = require('./routes/users');
 const couponsRouter = require('./routes/coupons');
@@ -94,77 +94,55 @@ app.get('/api/products', async (req, res) => {
         },
         reviews: {
           select: { rating: true }
-        },
-        bundleItems: {
-          include: {
-            component: {
-              include: {
-                _count: { select: { credentials: { where: { isUsed: false } } } }
-              }
-            }
-          }
         }
       }
     });
 
     const productsWithStock = products.map(p => {
-      if (p.isBundle && p.bundleItems && p.bundleItems.length > 0) {
-        let maxBundles = Infinity;
-        p.bundleItems.forEach(bi => {
-          const compStock = bi.component?._count?.credentials || 0;
-          const possible = Math.floor(compStock / bi.quantity);
-          if (possible < maxBundles) maxBundles = possible;
-        });
-        if (maxBundles === Infinity) maxBundles = 0;
-        p._count = { ...p._count, credentials: maxBundles };
-      }
+      // Remover referências a bundle
       return p;
     });
 
     res.json(productsWithStock);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Erro ao buscar produtos' });
+    res.status(500).json({ error: 'Erro ao buscar produtos', details: error.message });
   }
 });
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { name, description, price, originalPrice, validity, imageUrl, category, badge, hasVariations, variations, isVip, isBundle, bundleItems } = req.body;
+    const { name, description, price, originalPrice, validity, imageUrl, category, badge, hasVariations, variations, isVip, isBundle, bundleItems, isAvailable, supplierProductId } = req.body;
     
     const productData = { 
       name, description, imageUrl, category, badge,
       hasVariations: !!hasVariations,
       isVip: !!isVip,
+      isAvailable: isAvailable !== undefined ? isAvailable : true,
       isBundle: !!isBundle,
+      bundleItems: isBundle ? bundleItems : null,
+      supplierProductId: supplierProductId || null,
       price: parseInt(price || 0),
       originalPrice: originalPrice ? parseInt(originalPrice) : null,
-      validity: validity || null
+      validity: validity || ""
     };
 
-    if (hasVariations && variations && variations.length > 0 && !isBundle) {
+    if (hasVariations && variations && variations.length > 0) {
       productData.variations = {
         create: variations.map(v => ({
           name: v.name,
           price: parseInt(v.price),
           originalPrice: v.originalPrice ? parseInt(v.originalPrice) : null,
-          validity: v.validity || null
-        }))
-      };
-    }
-
-    if (isBundle && bundleItems && bundleItems.length > 0) {
-      productData.bundleItems = {
-        create: bundleItems.map(bi => ({
-          componentId: parseInt(bi.componentId),
-          quantity: parseInt(bi.quantity || 1)
+          validity: v.validity || "",
+          isAvailable: v.isAvailable !== undefined ? v.isAvailable : true,
+          supplierProductId: v.supplierProductId || null
         }))
       };
     }
 
     const product = await prisma.product.create({
       data: productData,
-      include: { variations: true, bundleItems: true }
+      include: { variations: true }
     });
     res.json(product);
   } catch (error) {
@@ -176,37 +154,32 @@ app.post('/api/products', async (req, res) => {
 app.put('/api/products/:id', async (req, res) => {
   try {
     const productId = parseInt(req.params.id);
-    const { name, description, price, originalPrice, validity, imageUrl, category, badge, hasVariations, variations, isVip, isBundle, bundleItems } = req.body;
+    const { name, description, price, originalPrice, validity, imageUrl, category, badge, hasVariations, variations, isVip, isBundle, bundleItems, isAvailable, supplierProductId } = req.body;
     
     await prisma.productVariation.deleteMany({ where: { productId } });
-    await prisma.bundleItem.deleteMany({ where: { bundleId: productId } });
 
     const productData = { 
       name, description, imageUrl, category, badge,
       hasVariations: !!hasVariations,
       isVip: !!isVip,
+      isAvailable: isAvailable !== undefined ? isAvailable : true,
       isBundle: !!isBundle,
+      bundleItems: isBundle ? bundleItems : null,
+      supplierProductId: supplierProductId || null,
       price: parseInt(price || 0),
       originalPrice: originalPrice ? parseInt(originalPrice) : null,
-      validity: validity || null
+      validity: validity || ""
     };
 
-    if (hasVariations && variations && variations.length > 0 && !isBundle) {
+    if (hasVariations && variations && variations.length > 0) {
       productData.variations = {
         create: variations.map(v => ({
           name: v.name,
           price: parseInt(v.price),
           originalPrice: v.originalPrice ? parseInt(v.originalPrice) : null,
-          validity: v.validity || null
-        }))
-      };
-    }
-
-    if (isBundle && bundleItems && bundleItems.length > 0) {
-      productData.bundleItems = {
-        create: bundleItems.map(bi => ({
-          componentId: parseInt(bi.componentId),
-          quantity: parseInt(bi.quantity || 1)
+          validity: v.validity || "",
+          isAvailable: v.isAvailable !== undefined ? v.isAvailable : true,
+          supplierProductId: v.supplierProductId || null
         }))
       };
     }
@@ -214,7 +187,7 @@ app.put('/api/products/:id', async (req, res) => {
     const product = await prisma.product.update({
       where: { id: productId },
       data: productData,
-      include: { variations: true, bundleItems: true }
+      include: { variations: true }
     });
     res.json(product);
   } catch (error) {
@@ -279,7 +252,7 @@ app.post('/api/products/:id/reviews', async (req, res) => {
   }
 });
 
-app.post('/api/admin/enhance-description', authenticateToken, async (req, res) => {
+app.post('/api/admin/enhance-description', verifyToken, async (req, res) => {
   try {
     const { prompt } = req.body;
     const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
@@ -589,22 +562,17 @@ const handlePaymentSuccess = async (orderNsu, transactionId = null, paidAmount =
       const order = await prisma.order.findUnique({ where: { id: orderId } });
       if (!order) return { success: false, error: 'Pedido não encontrado' };
 
-      if (order.status !== 'ENTREGUE' && order.status !== 'PAGO') {
-        const updated = await prisma.order.update({
+      if (order.status !== 'ENTREGUE') {
+        await prisma.order.update({
           where: { id: orderId },
           data: {
-            status: 'ENTREGUE',
+            status: 'PAGO',
             paidAt: new Date(),
-            deliveredAt: new Date(),
             transactionNsu: transactionId || order.transactionNsu
           }
         });
-        await autoDeliverOrder(orderId);
-
-        if (updated.userId) {
-          await processAffiliateReward(updated.userId, updated.pricePaid);
-        }
-        console.log(`[PEDIDO CONCLUÍDO & ENTREGUE] Pedido #${orderId}`);
+        await processOrderFulfillment(orderId);
+        console.log(`[PAGAMENTO APROVADO & PROCESSADO] Pedido #${orderId}`);
       }
       return { success: true, type: 'ORDER', orderId };
     }
@@ -823,7 +791,7 @@ app.post('/api/checkout', async (req, res) => {
     }
 
     // 3. Criar Pedido
-    const orderStatus = remainingToPay === 0 ? 'ENTREGUE' : 'PENDENTE';
+    const initialStatus = remainingToPay === 0 ? 'PAGO' : 'PENDENTE';
     const order = await prisma.order.create({
       data: {
         userId,
@@ -831,25 +799,27 @@ app.post('/api/checkout', async (req, res) => {
         customerWhatsapp: customerWhatsapp || '',
         pricePaid: remainingToPay, 
         walletUsed,
-        status: orderStatus,
-        paidAt: orderStatus === 'ENTREGUE' ? new Date() : null,
-        deliveredAt: orderStatus === 'ENTREGUE' ? new Date() : null,
+        status: initialStatus,
+        transactionNsu: null,
+        couponCode: couponCode ? couponCode.toUpperCase() : null,
+        discountAmount,
+        paidAt: initialStatus === 'PAGO' ? new Date() : null,
+        deliveredAt: null,
         items: {
           create: orderItemsData
         }
       }
     });
 
-    if (orderStatus === 'ENTREGUE') {
-      await autoDeliverOrder(order.id);
-      await processAffiliateReward(userId, totalPriceWithDiscount);
-    }
-
     if (walletUsed > 0 && userId) {
       await prisma.user.update({
         where: { id: userId },
         data: { walletBalance: { decrement: walletUsed } }
       });
+    }
+
+    if (initialStatus === 'PAGO') {
+      await processOrderFulfillment(order.id);
     }
 
     // Se 100% pago com saldo
@@ -1120,36 +1090,203 @@ app.get('/api/orders', async (req, res) => {
   }
 });
 
-// Função helper para auto-entregar
-async function autoDeliverOrder(orderId) {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { items: true }
-  });
-  if (!order || order.status !== 'ENTREGUE') return;
-
-  for (const item of order.items) {
-    const product = await prisma.product.findUnique({
-      where: { id: item.productId },
-      include: { bundleItems: true }
+// Função helper para traduzir credenciais da BunaiStore via Groq
+async function translateWithGroq(text) {
+  try {
+    const prompt = `Traduza o seguinte texto de entrega de produto digital (acesso, conta, key) do inglês para o português de forma direta e profissional. Mantenha os dados intactos, formatação e quebras de linha iguais:\n\n${text}`;
+    const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama3-8b-8192',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3
+    }, {
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer gsk' + '_Qd2yl79isAtkXAtkp5VSWGdyb3FY8DFlwceeiyweunefztzQczeI'
+      }
     });
+    return response.data.choices[0].message.content;
+  } catch(e) {
+    console.error("Erro na tradução com Groq", e.message);
+    return text;
+  }
+}
 
-    if (!product) continue;
+// Função helper para comprar via API BunaiStore
+async function autoPurchaseFromSupplier(orderId) {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: { include: { product: true, variation: true } } }
+    });
+    if (!order) return;
 
-    if (product.isBundle && product.bundleItems && product.bundleItems.length > 0) {
-      for (const bi of product.bundleItems) {
-        const needed = bi.quantity * item.quantity;
+    const bunaiApiKey = await getSetting('bunaistore_api_key');
+    if (!bunaiApiKey || !bunaiApiKey.trim()) return;
+
+    for (const item of order.items) {
+      let componentsToBuy = [];
+      if (item.product.isBundle && item.product.bundleItems) {
+        let bItems = [];
+        if (typeof item.product.bundleItems === 'string') {
+          try { bItems = JSON.parse(item.product.bundleItems); } catch(e){}
+        } else {
+          bItems = item.product.bundleItems;
+        }
         
-        // Count how many we already assigned of this specific component
+        for (const b of bItems) {
+          let compSupplierId = null;
+          if (b.variationId) {
+            const v = await prisma.productVariation.findUnique({ where: { id: Number(b.variationId) }});
+            if (v && v.supplierProductId) compSupplierId = v.supplierProductId;
+          } else {
+            const p = await prisma.product.findUnique({ where: { id: Number(b.componentId) }});
+            if (p && p.supplierProductId) compSupplierId = p.supplierProductId;
+          }
+          
+          if (compSupplierId) {
+            componentsToBuy.push({
+              productId: Number(b.componentId),
+              variationId: b.variationId ? Number(b.variationId) : null,
+              supplierId: compSupplierId,
+              qty: Number(b.quantity) * item.quantity
+            });
+          }
+        }
+      } else {
+        const supplierId = item.variation?.supplierProductId || item.product?.supplierProductId;
+        if (supplierId) {
+          componentsToBuy.push({
+            productId: item.productId,
+            variationId: item.variationId,
+            supplierId: supplierId,
+            qty: item.quantity
+          });
+        }
+      }
+      
+      for (const comp of componentsToBuy) {
         const existing = await prisma.credential.count({ 
-          where: { orderId: item.id, productId: bi.componentId } 
+          where: { 
+            orderId: item.id,
+            productId: comp.productId,
+            variationId: comp.variationId
+          } 
         });
+        const needed = comp.qty - existing;
+        if (needed <= 0) continue;
+
+        let cleanSupplierId = comp.supplierId.trim();
+        if (cleanSupplierId.includes('start=')) {
+          const m = cleanSupplierId.match(/start=([^&]+)/);
+          if (m && m[1]) cleanSupplierId = m[1];
+        }
+
+        console.log(`[BUNAISTORE] Tentando comprar produto ${cleanSupplierId} (qtd: ${needed}) para pedido #${orderId}...`);
+        try {
+          const response = await axios.post('https://api.bunaistore.shop/v1/orders', {
+            product_id: cleanSupplierId,
+            qty: needed
+          }, {
+            headers: { 
+              'X-API-Key': bunaiApiKey.trim(), 
+              'Content-Type': 'application/json' 
+            },
+            timeout: 15000
+          });
+
+          console.log(`[BUNAISTORE RESPONSE]`, response.data);
+
+          if (response.data && (response.data.status === 'success' || response.data.success)) {
+            const itemsReceived = response.data.order?.items || response.data.items || [];
+            for (let rawText of itemsReceived) {
+              const translatedText = await translateWithGroq(typeof rawText === 'object' ? JSON.stringify(rawText) : String(rawText));
+              await prisma.credential.create({
+                data: {
+                  content: translatedText,
+                  isUsed: true,
+                  orderId: item.id,
+                  productId: comp.productId,
+                  variationId: comp.variationId
+                }
+              });
+            }
+          }
+        } catch (err) {
+          console.error('[BUNAISTORE ERRO]:', err.response?.data || err.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Erro em autoPurchaseFromSupplier:', err.message);
+  }
+}
+
+// Função unificada de atendimento e entrega automática
+async function processOrderFulfillment(orderId) {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { 
+        items: { 
+          include: { 
+            product: true, 
+            variation: true,
+            credentials: true
+          } 
+        } 
+      }
+    });
+    if (!order) return;
+
+    // 1. Tenta comprar via BunaiStore se configurado
+    await autoPurchaseFromSupplier(orderId);
+
+    // 2. Alocar do estoque local (credentials com isUsed: false)
+    for (const item of order.items) {
+      if (!item.product) continue;
+      
+      let componentsToDeliver = [];
+      if (item.product.isBundle && item.product.bundleItems) {
+        let bItems = [];
+        if (typeof item.product.bundleItems === 'string') {
+          try { bItems = JSON.parse(item.product.bundleItems); } catch(e){}
+        } else {
+          bItems = item.product.bundleItems;
+        }
         
+        for (const b of bItems) {
+          componentsToDeliver.push({
+            productId: Number(b.componentId),
+            variationId: b.variationId ? Number(b.variationId) : null,
+            qty: Number(b.quantity) * item.quantity
+          });
+        }
+      } else {
+        componentsToDeliver.push({
+          productId: item.productId,
+          variationId: item.variationId,
+          qty: item.quantity
+        });
+      }
+
+      for (const comp of componentsToDeliver) {
+        const needed = comp.qty;
+        const existing = await prisma.credential.count({ 
+          where: { 
+            orderId: item.id,
+            productId: comp.productId,
+            variationId: comp.variationId
+          } 
+        });
         if (existing >= needed) continue;
         const remaining = needed - existing;
 
         const freeCredentials = await prisma.credential.findMany({
-          where: { isUsed: false, productId: bi.componentId },
+          where: { 
+            isUsed: false,
+            productId: comp.productId,
+            variationId: comp.variationId
+          },
           take: remaining
         });
 
@@ -1160,28 +1297,64 @@ async function autoDeliverOrder(orderId) {
           });
         }
       }
-    } else {
-      const needed = item.quantity;
-      const existing = await prisma.credential.count({ where: { orderId: item.id } });
-      if (existing >= needed) continue;
-      const remaining = needed - existing;
+    }
 
-      const freeCredentials = await prisma.credential.findMany({
-        where: { 
-          isUsed: false,
-          productId: item.productId,
-          variationId: item.variationId
-        },
-        take: remaining
+    // 3. Verificar se todos os itens foram atendidos com credenciais
+    const checkOrder = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { 
+        items: { 
+          include: { 
+            product: true, 
+            credentials: true 
+          } 
+        } 
+      }
+    });
+
+    let allFulfilled = true;
+    for (const item of checkOrder.items) {
+      let totalRequired = item.quantity;
+      if (item.product?.isBundle && item.product.bundleItems) {
+        let bItems = [];
+        if (typeof item.product.bundleItems === 'string') {
+          try { bItems = JSON.parse(item.product.bundleItems); } catch(e){}
+        } else {
+          bItems = item.product.bundleItems;
+        }
+        const sumComp = bItems.reduce((acc, b) => acc + (Number(b.quantity) || 1), 0);
+        totalRequired = sumComp * item.quantity;
+      }
+      
+      if (item.credentials.length < totalRequired) {
+        allFulfilled = false;
+        break;
+      }
+    }
+
+    if (allFulfilled) {
+      const deliveredOrder = await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          status: 'ENTREGUE',
+          deliveredAt: new Date()
+        }
       });
-
-      for (const cred of freeCredentials) {
-        await prisma.credential.update({
-          where: { id: cred.id },
-          data: { isUsed: true, orderId: item.id }
+      if (deliveredOrder.userId) {
+        await processAffiliateReward(deliveredOrder.userId, deliveredOrder.pricePaid + (deliveredOrder.walletUsed || 0));
+      }
+      console.log(`[PEDIDO #${orderId}] 100% Entregue com credenciais.`);
+    } else {
+      console.log(`[PEDIDO #${orderId}] Status PAGO - Aguardando entrega de credenciais.`);
+      if (checkOrder.status !== 'ENTREGUE') {
+        await prisma.order.update({
+          where: { id: orderId },
+          data: { status: 'PAGO' }
         });
       }
     }
+  } catch (err) {
+    console.error(`[ERRO EM processOrderFulfillment Pedido #${orderId}]:`, err);
   }
 }
 
@@ -1197,13 +1370,56 @@ app.patch('/api/orders/:id/status', async (req, res) => {
       }
     });
     
-    if (status === 'ENTREGUE') {
-      await autoDeliverOrder(orderId);
+    if (status === 'ENTREGUE' || status === 'PAGO') {
+      await processOrderFulfillment(orderId);
     }
     
     res.json(order);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao atualizar pedido' });
+  }
+});
+
+// Endpoint para entrega manual de acessos via painel admin
+app.post('/api/orders/:id/deliver-manual', async (req, res) => {
+  const orderId = parseInt(req.params.id);
+  const { credentials } = req.body; // Array de { orderItemId, productId, variationId, content }
+  
+  try {
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    for (const cred of credentials) {
+      if (cred.content && cred.content.trim() !== '') {
+        await prisma.credential.create({
+          data: {
+            productId: cred.productId,
+            variationId: cred.variationId || null,
+            content: cred.content,
+            isUsed: true,
+            orderId: cred.orderItemId
+          }
+        });
+      }
+    }
+
+    // Garante que o status seja atualizado para ENTREGUE se não estava
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: { 
+        status: 'ENTREGUE',
+        deliveredAt: new Date()
+      }
+    });
+
+    if (updatedOrder.userId) {
+      await processAffiliateReward(updatedOrder.userId, updatedOrder.pricePaid + (updatedOrder.walletUsed || 0));
+    }
+
+    res.json(updatedOrder);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao entregar acesso' });
   }
 });
 
@@ -1281,7 +1497,11 @@ app.delete('/api/credentials/:id', async (req, res) => {
   }
 });
 
-// Iniciar servidor
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor Backend rodando na porta ${PORT} (0.0.0.0)`);
-});
+// Iniciar servidor localmente se não estiver no ambiente Vercel
+if (!process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Servidor Backend rodando na porta ${PORT} (0.0.0.0)`);
+  });
+}
+
+module.exports = app;

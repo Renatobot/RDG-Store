@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
@@ -234,6 +235,29 @@ router.post('/admin/ban', verifyToken, async (req, res) => {
     res.json({ success: true, role: user.role });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao banir usuário' });
+  }
+});
+
+// Excluir usuário definitivamente
+router.delete('/admin/:id', verifyToken, async (req, res) => {
+  if (req.userRole !== 'ADMIN') return res.status(403).json({ error: 'Acesso negado' });
+  const userId = parseInt(req.params.id);
+  
+  if (req.userId === userId) {
+    return res.status(400).json({ error: 'Você não pode excluir sua própria conta' });
+  }
+
+  try {
+    // Apagamos o usuário. 
+    // O Prisma cuidará do Cascade Delete para Reviews.
+    // O Prisma cuidará do SetNull para Orders.
+    await prisma.user.delete({
+      where: { id: userId }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Erro ao excluir usuário:", error);
+    res.status(500).json({ error: 'Erro ao excluir usuário' });
   }
 });
 

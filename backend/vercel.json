@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index.js"
+    }
+  ],
+  "env": {
+    "DATABASE_URL": "postgresql://postgres.gvnfuindbwokvbacqksu:RDGstore2026@aws-0-ca-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true&sslmode=require",
+    "SUPABASE_URL": "https://gvnfuindbwokvbacqksu.supabase.co",
+    "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2bmZ1aW5kYndva3ZiYWNxa3N1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1NTU3ODUsImV4cCI6MjEwMjEzMTc4NX0.MqgUUintlbCbTxiCt3z1XaPT-XTmPpq5wQ8Bi6VqUEM",
+    "JWT_SECRET": "rdg_super_secret_key_2026"
+  }
+}

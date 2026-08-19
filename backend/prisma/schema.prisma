@@ -25,35 +25,41 @@ model User {
 }
 
 model Product {
-  id            Int      @id @default(autoincrement())
-  name          String
-  description   String?
-  price         Int      // Preço em centavos
-  originalPrice Int?     // Preço riscado (opcional)
-  validity      String   // Ex: "7 dias", "30 dias"
-  imageUrl      String?  // Link da imagem (opcional)
-  category      String   @default("Streaming") // "Streaming", "Combos", etc
-  badge         String?  // "🔥 Promoção", "⏳ Últimas Unidades"
-  isVip         Boolean  @default(false)
-  hasVariations Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  orderItems    OrderItem[]
-  variations    ProductVariation[]
-  credentials   Credential[]
-  reviews       Review[]
+  id                Int      @id @default(autoincrement())
+  name              String
+  description       String?
+  price             Int      // Preço em centavos
+  originalPrice     Int?     // Preço riscado (opcional)
+  validity          String   // Ex: "7 dias", "30 dias"
+  imageUrl          String?  // Link da imagem (opcional)
+  category          String   @default("Streaming") // "Streaming", "Combos", etc
+  badge             String?  // "🔥 Promoção", "⏳ Últimas Unidades"
+  isVip             Boolean  @default(false)
+  hasVariations     Boolean  @default(false)
+  isAvailable       Boolean  @default(true)
+  isBundle          Boolean  @default(false)
+  bundleItems       Json?
+  supplierProductId String?  // ID do produto na BunaiStore
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  orderItems        OrderItem[]
+  variations        ProductVariation[]
+  credentials       Credential[]
+  reviews           Review[]
 }
 
 model ProductVariation {
-  id            Int      @id @default(autoincrement())
-  productId     Int
-  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  name          String   // Ex: "Tela - 30 Dias" ou "Anual"
-  price         Int
-  originalPrice Int?
-  validity      String?
-  orderItems    OrderItem[]
-  credentials   Credential[]
+  id                Int      @id @default(autoincrement())
+  productId         Int
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name              String   // Ex: "Tela - 30 Dias" ou "Anual"
+  price             Int
+  originalPrice     Int?
+  validity          String?
+  isAvailable       Boolean  @default(true)
+  supplierProductId String?  // ID do produto na BunaiStore
+  orderItems        OrderItem[]
+  credentials       Credential[]
 }
 
 model Credential {
@@ -88,6 +94,8 @@ model Order {
   walletUsed       Int       @default(0) // Quanto do saldo foi usado
   status           String    @default("PENDENTE") // PENDENTE, PAGO, ENTREGUE, CANCELADO
   transactionNsu   String?   // UUID da transação na InfinitePay
+  couponCode       String?   // Cupom utilizado na compra
+  discountAmount   Int       @default(0) // Desconto concedido pelo cupom
   createdAt        DateTime  @default(now())
   paidAt           DateTime?
   deliveredAt      DateTime?

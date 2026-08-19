@@ -26,6 +26,18 @@ const StatusBadge = ({ status }) => {
   return <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase border ${c.color}`}>{c.label}</span>;
 };
 
+const renderTextWithLinks = (text) => {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, i) => {
+    if (part.match(urlRegex)) {
+      return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-all inline-block mt-1">{part}</a>;
+    }
+    return <span key={i}>{part}</span>;
+  });
+};
+
 // ─── Modal Wrapper ───────────────────────────────────────────────────────────
 const Modal = ({ title, onClose, children, maxW = 'max-w-lg' }) => (
   <div className="fixed inset-0 z-[200] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto" onClick={onClose}>
@@ -59,6 +71,8 @@ export default function AdminPanel() {
   const [coupons, setCoupons] = useState([]);
   const [credentials, setCredentials] = useState([]);
   const [usersSearch, setUsersSearch] = useState('');
+  const [ordersSearch, setOrdersSearch] = useState('');
+  const [ordersStatusFilter, setOrdersStatusFilter] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [settings, setSettings] = useState({
     whatsapp: '',
@@ -98,7 +112,17 @@ export default function AdminPanel() {
   const [editingId, setEditingId] = useState(null);
   const [isCustomCat, setIsCustomCat] = useState(false);
   const [isCustomBadge, setIsCustomBadge] = useState(false);
-  const [formData, setFormData] = useState({ name:'', description:'', price:'', originalPrice:'', validity:'', imageUrl:'', category:'Streaming', badge:'', hasVariations:false, variations:[], isVip:false, isBundle:false, bundleItems:[] });
+  const [formData, setFormData] = useState({ name:'', description:'', price:'', originalPrice:'', validity:'', imageUrl:'', category:'Streaming', badge:'', hasVariations:false, variations:[], isVip:false, isBundle:false, bundleItems:[], isAvailable: true, supplierProductId: '' });
+
+  const extractSupplierId = (value) => {
+    if (!value) return '';
+    const trimmed = value.trim();
+    if (trimmed.includes('start=')) {
+      const match = trimmed.match(/start=([^&]+)/);
+      if (match && match[1]) return match[1];
+    }
+    return trimmed;
+  };
   const [isEnhancing, setIsEnhancing] = useState(false);
 
   // ── Banner ──
@@ -113,6 +137,33 @@ export default function AdminPanel() {
   // ── Product search/filter ──
   const [prodSearch, setProdSearch] = useState('');
   const [prodCatFilter, setProdCatFilter] = useState('');
+
+  // ── Manual Delivery ──
+  const [deliverModal, setDeliverModal] = useState({ isOpen: false, order: null });
+  const [deliverData, setDeliverData] = useState([]); // array of { orderItemId, productId, variationId, content }
+
+  const openDeliverModal = (order) => {
+    // Pega itens que ainda não têm credenciais ou têm menos do que a quantidade comprada
+    const items = order.items.filter(i => !i.credentials || i.credentials.length < i.quantity);
+    if (items.length === 0) return alert('Este pedido já possui todas as credenciais entregues.');
+    setDeliverData(items.map(i => ({ orderItemId: i.id, productId: i.productId, variationId: i.variationId, content: '', name: i.product?.name, variationName: i.variation?.name, quantity: i.quantity })));
+    setDeliverModal({ isOpen: true, order });
+  };
+
+  const submitManualDelivery = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(`${API_BASE}/api/orders/${deliverModal.order.id}/deliver-manual`, { credentials: deliverData });
+      const phone = deliverModal.order.customerWhatsapp.replace(/\D/g, '');
+      const orderId = deliverModal.order.id + 31794;
+      const msg = encodeURIComponent(`Olá ${deliverModal.order.customerName}! Seu pedido #${orderId} já está liberado. Você já pode visualizar o seu acesso exclusivo entrando no painel da nossa loja: https://loja.rdgdigital.com.br/dashboard`);
+      window.open(`https://wa.me/55${phone}?text=${msg}`, '_blank');
+      setDeliverModal({ isOpen: false, order: null });
+      fetchOrders();
+    } catch (err) {
+      alert('Erro ao entregar credenciais: ' + (err.response?.data?.error || err.message));
+    }
+  };
 
   // ────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -193,14 +244,14 @@ ${formData.description}`;
       setIsCustomCat(!CATS.includes(p.category));
       setIsCustomBadge(p.badge && !BADGES.includes(p.badge));
       setFormData({ 
-        name:p.name, description:p.description||'', price:(p.price/100).toString(), originalPrice:p.originalPrice?(p.originalPrice/100).toString():'', validity:p.validity||'', imageUrl:p.imageUrl||'', category:p.category||'Streaming', badge:p.badge||'', hasVariations:p.hasVariations||false, isVip:p.isVip||false, 
-        variations:(p.variations||[]).map(v => ({ name:v.name, price:(v.price/100).toString(), originalPrice:v.originalPrice?(v.originalPrice/100).toString():'', validity:v.validity||'' })),
+        name:p.name, description:p.description||'', price:(p.price/100).toString(), originalPrice:p.originalPrice?(p.originalPrice/100).toString():'', validity:p.validity||'', imageUrl:p.imageUrl||'', category:p.category||'Streaming', badge:p.badge||'', hasVariations:p.hasVariations||false, isVip:p.isVip||false, isAvailable: p.isAvailable !== false, supplierProductId: p.supplierProductId||'',
+        variations:(p.variations||[]).map(v => ({ name:v.name, price:(v.price/100).toString(), originalPrice:v.originalPrice?(v.originalPrice/100).toString():'', validity:v.validity||'', isAvailable: v.isAvailable !== false, supplierProductId:v.supplierProductId||'' })),
         isBundle:p.isBundle||false,
-        bundleItems:(p.bundleItems||[]).map(b => ({ componentId: b.componentId, quantity: b.quantity }))
+        bundleItems:(Array.isArray(p.bundleItems) ? p.bundleItems : (p.bundleItems && typeof p.bundleItems === 'string' ? JSON.parse(p.bundleItems) : [])).map(b => ({ componentId: b.componentId?.toString(), variationId: b.variationId?.toString() || '', quantity: b.quantity?.toString() || '1' }))
       });
     } else {
       setEditingId(null); setIsCustomCat(false); setIsCustomBadge(false);
-      setFormData({ name:'', description:'', price:'', originalPrice:'', validity:'', imageUrl:'', category:'Streaming', badge:'', hasVariations:false, variations:[], isVip:false, isBundle:false, bundleItems:[] });
+      setFormData({ name:'', description:'', price:'', originalPrice:'', validity:'', imageUrl:'', category:'Streaming', badge:'', hasVariations:false, variations:[], isVip:false, isBundle:false, bundleItems:[], isAvailable: true, supplierProductId: '' });
     }
     setIsModalOpen(true);
   };
@@ -210,8 +261,19 @@ ${formData.description}`;
       ...formData, 
       price: Math.round(parseFloat(formData.price.replace(',','.')||0)*100), 
       originalPrice:formData.originalPrice?Math.round(parseFloat(formData.originalPrice.replace(',','.'))*100):null, 
-      variations:formData.variations.map(v=>({ name:v.name, validity:v.validity, price:Math.round(parseFloat(v.price.replace(',','.')||0)*100), originalPrice:v.originalPrice?Math.round(parseFloat(v.originalPrice.replace(',','.'))*100):null })),
-      bundleItems:formData.bundleItems.map(b=>({ componentId: parseInt(b.componentId), quantity: parseInt(b.quantity) }))
+      variations:formData.variations.map(v=>({ 
+        name:v.name, 
+        validity:v.validity, 
+        price:Math.round(parseFloat(v.price.replace(',','.')||0)*100), 
+        originalPrice:v.originalPrice?Math.round(parseFloat(v.originalPrice.replace(',','.'))*100):null, 
+        isAvailable: v.isAvailable,
+        supplierProductId: v.supplierProductId || null
+      })),
+      bundleItems:formData.bundleItems.map(b=>({ 
+        componentId: parseInt(b.componentId), 
+        variationId: b.variationId ? parseInt(b.variationId) : null,
+        quantity: parseInt(b.quantity) 
+      }))
     };
     try { editingId ? await axios.put(`${API_BASE}/api/products/${editingId}`, payload) : await axios.post(`${API_BASE}/api/products`, payload); setIsModalOpen(false); fetchProducts(); } catch { alert('Erro ao salvar produto'); }
   };
@@ -239,7 +301,43 @@ ${formData.description}`;
   const changeProfile = async e => { e.preventDefault(); try { const r = await axios.put(`${API_BASE}/api/users/me/profile`, profileForm, auth()); setUser(r.data.user); alert('Perfil atualizado!'); setProfileModal(false); } catch(err){ alert(err.response?.data?.error||'Erro'); } };
 
   // ── Derived ──────────────────────────────────────────────────────────────────
-  const filteredUsers = users.filter(u => { const s = usersSearch.toLowerCase(); return !s || u.id.toString().includes(s) || u.name.toLowerCase().includes(s) || u.email.toLowerCase().includes(s); });
+  const filteredUsers = users.filter(u => { 
+    const s = usersSearch.toLowerCase().trim(); 
+    if (!s) return true;
+    return (
+      u.id.toString().includes(s) || 
+      `#${u.id}`.includes(s) ||
+      u.name?.toLowerCase().includes(s) || 
+      u.email?.toLowerCase().includes(s) ||
+      (u.affiliateCode && u.affiliateCode.toLowerCase().includes(s)) ||
+      (u.role && u.role.toLowerCase().includes(s))
+    ); 
+  });
+
+  const filteredOrders = orders.filter(order => {
+    const s = ordersSearch.toLowerCase().trim();
+    const statusOk = !ordersStatusFilter || order.status === ordersStatusFilter;
+    if (!statusOk) return false;
+    if (!s) return true;
+
+    const rawId = order.id?.toString() || '';
+    const displayId = (order.id + 31794).toString();
+    const formattedId = `#${displayId}`;
+    const idMatch = rawId.includes(s) || displayId.includes(s) || formattedId.toLowerCase().includes(s);
+
+    const nameMatch = order.customerName?.toLowerCase().includes(s);
+    const whatsappMatch = order.customerWhatsapp?.toLowerCase().includes(s);
+    const userNameMatch = order.user?.name?.toLowerCase().includes(s);
+    const userEmailMatch = order.user?.email?.toLowerCase().includes(s);
+    const couponMatch = order.couponCode?.toLowerCase().includes(s);
+    const itemsMatch = order.items?.some(i => 
+      i.product?.name?.toLowerCase().includes(s) || 
+      i.variation?.name?.toLowerCase().includes(s)
+    );
+
+    return idMatch || nameMatch || whatsappMatch || userNameMatch || userEmailMatch || couponMatch || itemsMatch;
+  });
+
   const filteredProds = products.filter(p => { const s = prodSearch.toLowerCase(); const catOk = !prodCatFilter || p.category === prodCatFilter; const nameOk = !s || p.name.toLowerCase().includes(s); return catOk && nameOk; });
 
   const tabs = [
@@ -327,15 +425,59 @@ ${formData.description}`;
           {/* ══ ORDERS ═════════════════════════════════════════════════ */}
           {activeTab === 'orders' && (
             <div>
-              <div className="flex items-center gap-3 mb-6">
-                <ShoppingBag className="text-primary" size={22} />
-                <h2 className="text-xl font-bold text-white">Pedidos</h2>
-                <span className="bg-white/10 text-gray-400 text-xs px-2 py-0.5 rounded-full">{orders.length} total</span>
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                <div className="flex items-center gap-3">
+                  <ShoppingBag className="text-primary" size={22} />
+                  <h2 className="text-xl font-bold text-white">Pedidos</h2>
+                  <span className="bg-white/10 text-gray-400 text-xs px-2 py-0.5 rounded-full">{orders.length} total</span>
+                  {(ordersSearch || ordersStatusFilter) && (
+                    <span className="bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full font-bold">
+                      {filteredOrders.length} {filteredOrders.length === 1 ? 'encontrado' : 'encontrados'}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Filtros e Busca de Pedidos */}
+              <div className="flex flex-wrap gap-3 mb-5">
+                <div className="relative flex-1 min-w-56">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input 
+                    value={ordersSearch} 
+                    onChange={e => setOrdersSearch(e.target.value)} 
+                    placeholder="Buscar por ID (#31802), nome, email, WhatsApp ou produto..." 
+                    className={`${inp} pl-9 pr-8`} 
+                  />
+                  {ordersSearch && (
+                    <button 
+                      onClick={() => setOrdersSearch('')} 
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
+                      title="Limpar busca"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <select 
+                  value={ordersStatusFilter} 
+                  onChange={e => setOrdersStatusFilter(e.target.value)} 
+                  className={inp + ' w-auto shrink-0'}
+                >
+                  <option value="">Todos os status</option>
+                  <option value="PAGO">🟢 Pagos (Aguardando Entrega)</option>
+                  <option value="ENTREGUE">🔵 Entregues</option>
+                  <option value="PENDENTE">🟡 Pendentes</option>
+                  <option value="CANCELADO">🔴 Cancelados</option>
+                </select>
               </div>
 
               <div className="space-y-3">
-                {orders.length === 0 && <div className="text-center py-16 text-gray-600 bg-black/20 rounded-2xl border border-white/5">Nenhum pedido ainda.</div>}
-                {orders.map(order => (
+                {filteredOrders.length === 0 && (
+                  <div className="text-center py-16 text-gray-600 bg-black/20 rounded-2xl border border-white/5">
+                    {orders.length === 0 ? 'Nenhum pedido ainda.' : 'Nenhum pedido encontrado com estes filtros de busca.'}
+                  </div>
+                )}
+                {filteredOrders.map(order => (
                   <div key={order.id} className="bg-black/40 border border-white/10 rounded-2xl overflow-hidden hover:border-white/20 transition-colors">
                     {/* Header */}
                     <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-white/5">
@@ -347,6 +489,7 @@ ${formData.description}`;
                       <div className="flex items-center gap-4">
                         <div className="text-right">
                           <div className="text-white font-black">{fmtR(order.pricePaid + (order.walletUsed || 0))}</div>
+                          {order.couponCode && order.discountAmount > 0 && <div className="text-green-400 text-[10px]">-{fmtR(order.discountAmount)} Cupom {order.couponCode}</div>}
                           {order.walletUsed > 0 && <div className="text-primary text-[10px]">-{fmtR(order.walletUsed)} Carteira</div>}
                         </div>
                         <div className="text-xs text-gray-500">{new Date(order.createdAt).toLocaleDateString('pt-BR')}</div>
@@ -365,8 +508,11 @@ ${formData.description}`;
                               {i.credentials?.length > 0 && (
                                 <div className="mt-1 bg-green-500/10 border border-green-500/20 rounded-lg p-2 text-[11px] font-mono text-green-300 space-y-0.5">
                                   {i.credentials.map((c, ci) => {
-                                    try { const p = JSON.parse(c.content); return <div key={ci}>{p.login && `📧 ${p.login}`}{p.password && ` · 🔐 ${p.password}`}{p.notes && <span className="text-gray-400"> · {p.notes}</span>}</div>; }
-                                    catch { return <div key={ci}>{c.content}</div>; }
+                                    try { 
+                                      const p = JSON.parse(c.content); 
+                                      return <div key={ci}>{p.login && <span>📧 {renderTextWithLinks(p.login)}</span>}{p.password && <span> · 🔐 {renderTextWithLinks(p.password)}</span>}{p.notes && <span className="text-gray-400"> · {p.notes}</span>}</div>; 
+                                    }
+                                    catch { return <div key={ci}>{renderTextWithLinks(c.content)}</div>; }
                                   })}
                                 </div>
                               )}
@@ -374,17 +520,27 @@ ${formData.description}`;
                           ))}
                         </div>
                       </div>
-                      <div className="flex flex-col gap-2 shrink-0">
+                      <div className="flex flex-col gap-2 shrink-0 min-w-[140px]">
+                        {order.status === 'PAGO' || order.status === 'ENTREGUE' ? (
+                          order.items?.some(i => !i.credentials || i.credentials.length < i.quantity) ? (
+                            <button onClick={() => openDeliverModal(order)} className="flex items-center justify-center gap-1.5 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-lg shadow-green-500/20">
+                              <Key size={13}/> Adicionar Acesso
+                            </button>
+                          ) : (
+                            <span className="text-xs text-blue-400 flex items-center justify-center gap-1 bg-blue-500/10 py-1.5 rounded-lg border border-blue-500/20"><CheckCircle size={13}/> Acesso Liberado</span>
+                          )
+                        ) : null}
+                        
                         {order.status === 'PAGO' && (
-                          <button onClick={() => markDelivered(order.id)} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
-                            <CheckCircle size={13}/> Marcar Entregue
+                          <button onClick={() => markDelivered(order.id)} className="flex items-center justify-center gap-1.5 bg-blue-600/50 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors" title="Marcar como entregue sem credencial">
+                            Forçar Entrega
                           </button>
                         )}
-                        {order.status === 'ENTREGUE' && <span className="text-xs text-blue-400 flex items-center gap-1"><CheckCircle size={13}/> Entregue</span>}
+                        
                         {(order.status === 'PAGO' || order.status === 'ENTREGUE') && (
                           order.userId
-                            ? <button onClick={() => refund(order.id)} className="flex items-center gap-1.5 bg-primary/20 hover:bg-primary/40 text-primary border border-primary/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"><RefreshCcw size={13}/> Reembolsar</button>
-                            : <span className="text-[11px] text-gray-600 border border-white/5 px-2 py-1 rounded-lg">Sem conta vinculada</span>
+                            ? <button onClick={() => refund(order.id)} className="flex items-center justify-center gap-1.5 bg-primary/20 hover:bg-primary/40 text-primary border border-primary/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"><RefreshCcw size={13}/> Reembolsar</button>
+                            : <span className="text-[11px] text-gray-600 border border-white/5 px-2 py-1 rounded-lg text-center">Sem conta</span>
                         )}
                       </div>
                     </div>
@@ -520,10 +676,29 @@ ${formData.description}`;
                   <User className="text-primary" size={22} />
                   <h2 className="text-xl font-bold text-white">Clientes</h2>
                   <span className="bg-white/10 text-gray-400 text-xs px-2 py-0.5 rounded-full">{users.length}</span>
+                  {usersSearch && (
+                    <span className="bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full font-bold">
+                      {filteredUsers.length} {filteredUsers.length === 1 ? 'encontrado' : 'encontrados'}
+                    </span>
+                  )}
                 </div>
-                <div className="relative">
+                <div className="relative flex-1 sm:flex-initial sm:w-80">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input value={usersSearch} onChange={e => setUsersSearch(e.target.value)} placeholder="Buscar por nome, email, ID..." className={`${inp} pl-9 w-64`} />
+                  <input 
+                    value={usersSearch} 
+                    onChange={e => setUsersSearch(e.target.value)} 
+                    placeholder="Buscar por nome, email, #ID ou cargo..." 
+                    className={`${inp} pl-9 pr-8`} 
+                  />
+                  {usersSearch && (
+                    <button 
+                      onClick={() => setUsersSearch('')} 
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
+                      title="Limpar busca"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -555,8 +730,8 @@ ${formData.description}`;
                           <td className="px-4 py-3 text-gray-400 text-xs">{u.email}</td>
                           <td className="px-4 py-3 text-green-400 font-bold text-sm">{fmtR(u.walletBalance||0)}</td>
                           <td className="px-4 py-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${u.role==='BANNED' ? 'bg-red-500/20 text-red-400 border-red-500/30' : u.isVip ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-green-500/20 text-green-400 border-green-500/30'}`}>
-                              {u.role==='BANNED' ? 'Banido' : u.isVip ? 'VIP' : 'Ativo'}
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${u.role==='ADMIN' ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' : u.role==='BANNED' ? 'bg-red-500/20 text-red-400 border-red-500/30' : u.isVip ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-green-500/20 text-green-400 border-green-500/30'}`}>
+                              {u.role==='ADMIN' ? 'ADMIN' : u.role==='BANNED' ? 'Banido' : u.isVip ? 'VIP' : 'Ativo'}
                             </span>
                           </td>
                           <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
@@ -580,8 +755,20 @@ ${formData.description}`;
                               <button onClick={async () => {
                                 if (!window.confirm(u.role==='BANNED'?'Desbanir?':'Banir este usuário?')) return;
                                 await axios.post(`${API_BASE}/api/users/admin/ban`, { userId:u.id, ban:u.role!=='BANNED' }, auth()); fetchUsers();
-                              }} className={`${u.role==='BANNED' ? 'bg-gray-600/20 hover:bg-gray-600 text-gray-400' : 'bg-red-500/20 hover:bg-red-600 text-red-400'} hover:text-white border border-red-500/20 px-2 py-1 rounded-lg text-[11px] font-bold transition-colors`} title={u.role==='BANNED'?'Desbanir':'Banir'}>
+                              }} className={`${u.role==='BANNED' ? 'bg-gray-600/20 hover:bg-gray-600 text-gray-400' : 'bg-orange-500/20 hover:bg-orange-600 text-orange-400'} hover:text-white border ${u.role==='BANNED' ? 'border-gray-500/20' : 'border-orange-500/20'} px-2 py-1 rounded-lg text-[11px] font-bold transition-colors`} title={u.role==='BANNED'?'Desbanir':'Banir'}>
                                 <Ban size={12}/>
+                              </button>
+                              <button onClick={async () => {
+                                if (u.id === user?.id) return alert('Você não pode apagar sua própria conta.');
+                                if (!window.confirm(`Tem certeza absoluta que deseja EXCLUIR o usuário ${u.name}? Esta ação não pode ser desfeita e ele perderá o acesso, mas os dados financeiros passados serão mantidos de forma anônima.`)) return;
+                                try {
+                                  await axios.delete(`${API_BASE}/api/users/admin/${u.id}`, auth());
+                                  fetchUsers();
+                                } catch(e) {
+                                  alert(e.response?.data?.error || 'Erro ao excluir usuário');
+                                }
+                              }} className="bg-red-500/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/20 px-2 py-1 rounded-lg text-[11px] font-bold transition-colors" title="Excluir Definitivamente">
+                                <Trash2 size={12}/>
                               </button>
                               <button onClick={() => setSelectedUser(u)} className="bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white px-2 py-1 rounded-lg text-[11px] transition-colors" title="Ver detalhes">
                                 <ChevronRight size={12}/>
@@ -924,6 +1111,16 @@ ${formData.description}`;
                 </div>
 
                 <div className="bg-black/40 border border-white/10 rounded-2xl p-6 space-y-5">
+                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                    <Package size={18} className="text-primary" /> Integração BunaiStore
+                  </h3>
+                  <p className="text-xs text-gray-500">Configure sua chave de API para automatizar a compra e entrega de produtos direto do fornecedor.</p>
+                  <Field label="X-API-Key (BunaiStore)">
+                    <input type="password" value={settings.bunaistore_api_key || ''} onChange={e => setSettings({...settings, bunaistore_api_key:e.target.value})} placeholder="shop:12312..." className={inp} />
+                  </Field>
+                </div>
+
+                <div className="bg-black/40 border border-white/10 rounded-2xl p-6 space-y-5">
                   <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">🤝 Programa de Afiliados</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Tipo de Recompensa">
@@ -1031,7 +1228,7 @@ ${formData.description}`;
               <textarea value={formData.description} onChange={e => setFormData({...formData,description:e.target.value})} className={`${inp} h-32 resize-y`} placeholder="Descreva o produto ou digite o básico e deixe a IA fazer a mágica..." />
             </div>
 
-            <div className="flex items-center gap-6 mb-2 border-t border-white/5 pt-4">
+            <div className="flex items-center gap-4 mb-2 border-t border-white/5 pt-4 flex-wrap">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={formData.isBundle} onChange={e => setFormData({...formData,isBundle:e.target.checked, hasVariations:false})} className="w-4 h-4 rounded" />
                 <span className="text-sm font-bold text-white bg-primary/20 px-2 py-1 rounded">📦 É um Combo?</span>
@@ -1044,7 +1241,11 @@ ${formData.description}`;
               )}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={formData.isVip} onChange={e => setFormData({...formData,isVip:e.target.checked})} className="w-4 h-4 rounded" />
-                <span className="text-sm text-yellow-400">👑 Produto VIP</span>
+                <span className="text-sm text-yellow-400">👑 VIP</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={formData.isAvailable !== false} onChange={e => setFormData({...formData,isAvailable:e.target.checked})} className="w-4 h-4 rounded" />
+                <span className="text-sm text-green-400">✅ Disponível</span>
               </label>
             </div>
 
@@ -1055,49 +1256,79 @@ ${formData.description}`;
                 <Field label="Validade"><input type="text" required value={formData.validity} onChange={e => setFormData({...formData,validity:e.target.value})} placeholder="30 dias" className={inp} /></Field>
               </div>
             ) : !formData.hasVariations ? (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <Field label="Preço Atual (R$)"><input type="text" required value={formData.price} onChange={e => setFormData({...formData,price:e.target.value})} placeholder="15,90" className={inp} /></Field>
                 <Field label="Preço Riscado"><input type="text" value={formData.originalPrice} onChange={e => setFormData({...formData,originalPrice:e.target.value})} placeholder="59,90" className={inp} /></Field>
                 <Field label="Validade"><input type="text" required value={formData.validity} onChange={e => setFormData({...formData,validity:e.target.value})} placeholder="30 dias" className={inp} /></Field>
+                <Field label="Link/ID BunaiStore"><input type="text" value={formData.supplierProductId || ''} onChange={e => setFormData({...formData,supplierProductId:extractSupplierId(e.target.value)})} placeholder="https://t.me/bunaistore_bot..." className={inp} /></Field>
               </div>
             ) : (
               <div className="border border-white/10 rounded-xl p-4 bg-black/30 space-y-3">
                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Variações</h4>
                 {formData.variations.map((v, i) => (
-                  <div key={i} className="grid grid-cols-4 gap-2 items-end border-b border-white/5 pb-3">
-                    <div className="col-span-2"><label className="text-xs text-gray-600 mb-1 block">Nome</label><input type="text" required value={v.name} onChange={e => { const nv=[...formData.variations]; nv[i].name=e.target.value; setFormData({...formData,variations:nv}); }} placeholder="Tela 30 dias" className={inp} /></div>
-                    <div><label className="text-xs text-gray-600 mb-1 block">Preço</label><input type="text" required value={v.price} onChange={e => { const nv=[...formData.variations]; nv[i].price=e.target.value; setFormData({...formData,variations:nv}); }} placeholder="15,90" className={inp} /></div>
-                    <div className="flex gap-2"><div className="flex-1"><label className="text-xs text-gray-600 mb-1 block">Validade</label><input type="text" value={v.validity} onChange={e => { const nv=[...formData.variations]; nv[i].validity=e.target.value; setFormData({...formData,variations:nv}); }} placeholder="30 dias" className={inp} /></div><button type="button" onClick={() => setFormData({...formData,variations:formData.variations.filter((_,j)=>j!==i)})} className="p-2 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors mt-5"><Trash2 size={14}/></button></div>
+                  <div key={i} className="flex flex-col gap-2 border-b border-white/5 pb-3">
+                    <div className="grid grid-cols-5 gap-2 items-end">
+                      <div className="col-span-2"><label className="text-xs text-gray-600 mb-1 block">Nome</label><input type="text" required value={v.name} onChange={e => { const nv=[...formData.variations]; nv[i].name=e.target.value; setFormData({...formData,variations:nv}); }} placeholder="Tela 30 dias" className={inp} /></div>
+                      <div><label className="text-xs text-gray-600 mb-1 block">Preço</label><input type="text" required value={v.price} onChange={e => { const nv=[...formData.variations]; nv[i].price=e.target.value; setFormData({...formData,variations:nv}); }} placeholder="15,90" className={inp} /></div>
+                      <div className="flex gap-2 col-span-2">
+                        <div className="flex-1"><label className="text-xs text-gray-600 mb-1 block">Validade</label><input type="text" value={v.validity} onChange={e => { const nv=[...formData.variations]; nv[i].validity=e.target.value; setFormData({...formData,variations:nv}); }} placeholder="30 dias" className={inp} /></div>
+                        <label className="flex flex-col items-center justify-end pb-2.5 cursor-pointer" title="Desmarque esta opção para tornar o plano INDISPONÍVEL">
+                          <span className="text-[10px] text-green-400 font-bold mb-1 whitespace-nowrap">Disponível</span>
+                          <input type="checkbox" checked={v.isAvailable !== false} onChange={e => { const nv=[...formData.variations]; nv[i].isAvailable=e.target.checked; setFormData({...formData,variations:nv}); }} className="w-4 h-4 accent-green-500 cursor-pointer" />
+                        </label>
+                        <button type="button" onClick={() => setFormData({...formData,variations:formData.variations.filter((_,j)=>j!==i)})} className="p-2 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors mt-5"><Trash2 size={14}/></button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600 mb-1 block">Link/ID BunaiStore</label>
+                      <input type="text" value={v.supplierProductId || ''} onChange={e => { const nv=[...formData.variations]; nv[i].supplierProductId=extractSupplierId(e.target.value); setFormData({...formData,variations:nv}); }} placeholder="https://t.me/bunaistore_bot..." className={inp} />
+                    </div>
                   </div>
                 ))}
-                <button type="button" onClick={() => setFormData({...formData,variations:[...formData.variations,{name:'',price:'',originalPrice:'',validity:''}]})} className="text-primary text-sm font-bold flex items-center gap-1 hover:text-primary/80 transition-colors"><Plus size={14}/> Adicionar Variação</button>
+                <button type="button" onClick={() => setFormData({...formData,variations:[...formData.variations,{name:'',price:'',originalPrice:'',validity:'',supplierProductId:''}]})} className="text-primary text-sm font-bold flex items-center gap-1 hover:text-primary/80 transition-colors"><Plus size={14}/> Adicionar Variação</button>
               </div>
             )}
 
             {formData.isBundle && (
               <div className="border border-primary/30 rounded-xl p-4 bg-primary/10 space-y-3">
                 <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Serviços deste Combo</h4>
-                {formData.bundleItems.map((b, i) => (
-                  <div key={i} className="grid grid-cols-4 gap-2 items-end border-b border-primary/20 pb-3">
-                    <div className="col-span-2">
-                      <label className="text-xs text-primary/70 mb-1 block font-bold">Produto Base</label>
-                      <select required value={b.componentId} onChange={e => { const nb=[...formData.bundleItems]; nb[i].componentId=e.target.value; setFormData({...formData,bundleItems:nb}); }} className={inp}>
-                        <option value="">Selecione um produto...</option>
-                        {products.filter(p => !p.isBundle && p.id !== editingId).map(p => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
+                {formData.bundleItems.map((b, i) => {
+                  const selProd = products.find(p => p.id == b.componentId);
+                  return (
+                    <div key={i} className="flex flex-col gap-2 border-b border-primary/20 pb-3">
+                      <div className="grid grid-cols-4 gap-2 items-end">
+                        <div className="col-span-2">
+                          <label className="text-xs text-primary/70 mb-1 block font-bold">Produto Base</label>
+                          <select required value={b.componentId} onChange={e => { const nb=[...formData.bundleItems]; nb[i].componentId=e.target.value; nb[i].variationId=''; setFormData({...formData,bundleItems:nb}); }} className={inp}>
+                            <option value="">Selecione um produto...</option>
+                            {products.filter(p => !p.isBundle && p.id !== editingId).map(p => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-primary/70 mb-1 block font-bold">Quantidade</label>
+                          <input type="number" min="1" required value={b.quantity} onChange={e => { const nb=[...formData.bundleItems]; nb[i].quantity=e.target.value; setFormData({...formData,bundleItems:nb}); }} className={inp} />
+                        </div>
+                        <div className="flex gap-2 items-end">
+                          <button type="button" onClick={() => setFormData({...formData,bundleItems:formData.bundleItems.filter((_,j)=>j!==i)})} className="p-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-colors"><Trash2 size={16}/></button>
+                        </div>
+                      </div>
+                      {selProd?.hasVariations && (
+                        <div>
+                          <label className="text-xs text-primary/70 mb-1 block font-bold">Qual variação deste produto?</label>
+                          <select required value={b.variationId || ''} onChange={e => { const nb=[...formData.bundleItems]; nb[i].variationId=e.target.value; setFormData({...formData,bundleItems:nb}); }} className={inp}>
+                            <option value="">Selecione a variação...</option>
+                            {(selProd.variations || []).map(v => (
+                              <option key={v.id} value={v.id}>{v.name} ({v.validity})</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <label className="text-xs text-primary/70 mb-1 block font-bold">Quantidade</label>
-                      <input type="number" min="1" required value={b.quantity} onChange={e => { const nb=[...formData.bundleItems]; nb[i].quantity=e.target.value; setFormData({...formData,bundleItems:nb}); }} className={inp} />
-                    </div>
-                    <div className="flex gap-2 items-end">
-                      <button type="button" onClick={() => setFormData({...formData,bundleItems:formData.bundleItems.filter((_,j)=>j!==i)})} className="p-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-colors"><Trash2 size={16}/></button>
-                    </div>
-                  </div>
-                ))}
-                <button type="button" onClick={() => setFormData({...formData,bundleItems:[...formData.bundleItems,{componentId:'',quantity:'1'}]})} className="w-full text-white bg-primary hover:bg-primary/80 rounded-lg py-2.5 text-sm font-bold flex items-center justify-center gap-2 transition-colors"><Plus size={16}/> Adicionar Serviço</button>
+                  );
+                })}
+                <button type="button" onClick={() => setFormData({...formData,bundleItems:[...formData.bundleItems,{componentId:'', variationId:'', quantity:'1'}]})} className="w-full text-white bg-primary hover:bg-primary/80 rounded-lg py-2.5 text-sm font-bold flex items-center justify-center gap-2 transition-colors"><Plus size={16}/> Adicionar Serviço</button>
               </div>
             )}
 
@@ -1123,6 +1354,43 @@ ${formData.description}`;
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={() => setPwModal(false)} className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold text-sm">Cancelar</button>
               <button type="submit" className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/80 text-white font-bold text-sm">Salvar</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Deliver Modal */}
+      {deliverModal.isOpen && (
+        <Modal title={`Entregar Pedido #${deliverModal.order.id + 31794}`} onClose={() => setDeliverModal({isOpen:false, order:null})}>
+          <form onSubmit={submitManualDelivery} className="space-y-4">
+            {deliverData.map((d, i) => (
+              <Field key={i} label={`${d.quantity}x ${d.name} ${d.variationName ? `(${d.variationName})` : ''}`}>
+                <textarea 
+                  required
+                  rows="3"
+                  value={d.content} 
+                  onChange={e => {
+                    const nd = [...deliverData];
+                    nd[i].content = e.target.value;
+                    setDeliverData(nd);
+                  }}
+                  placeholder="Cole o acesso aqui (Ex: email:senha ou link...)"
+                  className={`${inp} font-mono text-xs`}
+                />
+              </Field>
+            ))}
+            
+            <div className="bg-green-500/10 border border-green-500/20 p-3 rounded-xl mb-4 mt-2">
+              <p className="text-green-400 text-xs text-center font-medium">
+                Após salvar, o sistema abrirá o seu WhatsApp para você enviar a notificação ao cliente!
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={() => setDeliverModal({isOpen:false, order:null})} className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold text-sm">Cancelar</button>
+              <button type="submit" className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold text-sm shadow-lg shadow-green-500/20 flex items-center justify-center gap-2">
+                <Check size={16}/> Entregar e Notificar
+              </button>
             </div>
           </form>
         </Modal>

@@ -2,7 +2,7 @@ import { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { 
   ShieldCheck, Zap, HeartHandshake, ChevronLeft, ChevronRight, ShoppingCart, 
-  Menu, X, Tag, Monitor, Gamepad2, Bot, Wrench, Video, Key, Package, Flame, Smartphone, Plus, MessageCircle, Send, Trophy, CheckCircle, FileText
+  Menu, X, Tag, Monitor, Gamepad2, Bot, Wrench, Video, Key, Package, Flame, Smartphone, Plus, MessageCircle, Send, Trophy, CheckCircle, FileText, Eye
 } from 'lucide-react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { CartContext } from '../contexts/CartContext';
@@ -177,11 +177,9 @@ const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCa
   const hasVariations = p.hasVariations && p.variations?.length > 0;
   const [selectedVariation, setSelectedVariation] = useState(hasVariations ? p.variations[0] : null);
 
-  const stockCount = selectedVariation 
-    ? (selectedVariation._count?.credentials || 0) 
-    : (p._count?.credentials || 0);
-
-  const isOutOfStock = stockCount === 0;
+  const isOutOfStock = selectedVariation 
+    ? selectedVariation.isAvailable === false
+    : p.isAvailable === false;
   const isVipLocked = p.isVip && (!user || (!user.isVip && user.role !== 'ADMIN'));
   const reviewCount = productReviews.length;
   const avgRating = reviewCount > 0 ? (productReviews.reduce((s, r) => s + r.rating, 0) / reviewCount).toFixed(1) : null;
@@ -266,41 +264,64 @@ const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCa
                 <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Você também pode gostar</h4>
                 <div className="h-px flex-1 bg-gradient-to-l from-primary/30 to-transparent"></div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {displayRelated.map(rel => (
                   <button 
                     key={rel.id} 
                     onClick={() => { if (setSelectedProductDetail) setSelectedProductDetail(rel); }}
-                    className="group relative bg-black/40 border border-white/8 hover:border-primary/40 transition-all duration-300 rounded-2xl overflow-hidden text-left w-full cursor-pointer"
+                    className="group relative bg-[#0f1014]/80 backdrop-blur-xl border border-white/10 hover:border-primary/50 transition-all duration-500 rounded-3xl overflow-hidden text-left w-full cursor-pointer shadow-lg hover:shadow-[0_0_40px_-10px_rgba(var(--color-primary),0.4)] flex flex-col h-full"
                   >
-                    {/* Glow on hover */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary/0 to-primary/0 group-hover:from-primary/5 group-hover:to-purple-600/5 transition-all duration-300 rounded-2xl"></div>
+                    {/* Animated Glow Background */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-3xl z-0"></div>
                     
-                    {/* Image */}
-                    <div className="relative w-full aspect-video bg-black/60 overflow-hidden">
+                    {/* Image Section */}
+                    <div className="relative w-full aspect-[4/3] bg-black/80 overflow-hidden shrink-0 z-10">
                       {rel.imageUrl ? (
-                        <img src={rel.imageUrl} alt={rel.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <img 
+                          src={rel.imageUrl} 
+                          alt={rel.name} 
+                          className="w-full h-full object-contain p-3 group-hover:scale-110 group-hover:rotate-1 transition-transform duration-700 ease-out drop-shadow-md" 
+                        />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-600">
-                          <Package size={24}/>
+                        <div className="w-full h-full flex items-center justify-center text-gray-700 bg-gradient-to-br from-gray-900 to-black">
+                          <Package size={32} className="opacity-50" />
                         </div>
                       )}
+                      
+                      {/* Dark Overlay on Hover */}
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors duration-500"></div>
+
+                      {/* Action Button inside image */}
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-4 group-hover:translate-y-0">
+                        <div className="bg-primary text-white text-xs font-black uppercase tracking-wider px-4 py-2 rounded-full shadow-[0_0_20px_rgba(var(--color-primary),0.5)] flex items-center gap-2">
+                          <Eye size={14} /> Ver
+                        </div>
+                      </div>
+
                       {/* Badge */}
                       {rel.badge && (
-                        <div className="absolute top-2 left-2 text-[9px] font-black bg-black/70 text-primary border border-primary/30 px-1.5 py-0.5 rounded-full backdrop-blur-sm">
+                        <div className="absolute top-3 left-3 text-[10px] font-black bg-black/80 text-primary border border-primary/40 px-2.5 py-1 rounded-full backdrop-blur-md shadow-lg shadow-black/50">
                           {rel.badge}
                         </div>
                       )}
                     </div>
                     
-                    {/* Info */}
-                    <div className="p-3 relative z-10">
-                      <div className="text-xs font-bold text-white line-clamp-1 mb-1.5 group-hover:text-primary transition-colors">{rel.name}</div>
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm font-black text-primary">R$ {(rel.price/100).toFixed(2).replace('.', ',')}</div>
+                    {/* Info Section */}
+                    <div className="p-4 relative z-10 flex flex-col flex-1 bg-gradient-to-t from-black/60 to-transparent">
+                      <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1.5">{rel.category}</div>
+                      <div className="text-sm font-black text-white line-clamp-2 leading-snug mb-3 group-hover:text-primary transition-colors duration-300 flex-1">
+                        {rel.name}
+                      </div>
+                      
+                      <div className="flex flex-col mt-auto pt-2 border-t border-white/5">
                         {rel.originalPrice && (
-                          <div className="text-[10px] text-gray-600 line-through">R$ {(rel.originalPrice/100).toFixed(2).replace('.', ',')}</div>
+                          <div className="text-[10px] text-gray-500 line-through font-semibold mb-0.5">
+                            R$ {(rel.originalPrice/100).toFixed(2).replace('.', ',')}
+                          </div>
                         )}
+                        <div className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-400 drop-shadow-sm">
+                          R$ {(rel.price/100).toFixed(2).replace('.', ',')}
+                        </div>
                       </div>
                     </div>
                   </button>
@@ -334,7 +355,7 @@ const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCa
                   <div className="mb-6 space-y-3">
                     <div className="text-sm font-bold text-gray-300 mb-3">Escolha seu plano:</div>
                     {p.variations.map(v => {
-                      const isVarOutOfStock = (v._count?.credentials || 0) === 0;
+                      const isVarOutOfStock = v.isAvailable === false;
                       const isSelected = selectedVariation?.id === v.id;
                       
                       return (
@@ -395,7 +416,7 @@ const ProductDetailModal = ({ product: p, onClose, productReviews, user, addToCa
                   disabled={isOutOfStock}
                   className={`btn-primary w-full py-3.5 md:py-4 rounded-2xl text-sm md:text-base font-black uppercase tracking-wider flex items-center justify-center gap-2 ${ isOutOfStock ? 'opacity-50 cursor-not-allowed saturate-0' : 'shadow-[0_0_20px_rgba(var(--color-primary-rgb),0.3)] hover:shadow-[0_0_30px_rgba(var(--color-primary-rgb),0.5)] transition-shadow'}`}
                 >
-                  <ShoppingCart size={18} /> {isOutOfStock ? 'Esgotado' : 'Comprar Agora'}
+                  <ShoppingCart size={18} /> {isOutOfStock ? 'Indisponível' : 'Comprar Agora'}
                 </button>
               </>
             )}
@@ -695,11 +716,10 @@ export default function Storefront() {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-6 items-start">
               {filteredProducts.map(product => {
-                  const stockCount = product._count?.credentials || 0;
                   const hasVariations = product.hasVariations && product.variations?.length > 0;
-                  const isOutOfStock = stockCount === 0;
+                  const isOutOfStock = product.isAvailable === false;
                   const isVipLocked = product.isVip && (!user || (!user.isVip && user.role !== 'ADMIN'));
-                  const badgeText = isVipLocked ? '👑 VIP' : (isOutOfStock ? '🔴 ESGOTADO' : product.badge);
+                  const badgeText = isVipLocked ? '👑 VIP' : (isOutOfStock ? '🔴 INDISPONÍVEL' : product.badge);
                   
                   const reviewsCount = product.reviews?.length || 0;
                   const averageRating = reviewsCount > 0 
@@ -794,7 +814,7 @@ export default function Storefront() {
                           }`}
                         >
                           <ShoppingCart size={14} className="sm:w-4 sm:h-4 w-3 h-3" /> 
-                          {isOutOfStock ? 'Esgotado' : 'Adicionar'}
+                          {isOutOfStock ? 'Indisponível' : 'Adicionar'}
                         </button>
                       )}
                     </div>
@@ -983,8 +1003,7 @@ export default function Storefront() {
             
             <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
               {selectedProductForVariations.variations?.map(variation => {
-                const varStock = variation._count?.credentials || 0;
-                const isVarOutOfStock = varStock === 0;
+                const isVarOutOfStock = variation.isAvailable === false;
                 
                 return (
                   <button
@@ -1003,7 +1022,7 @@ export default function Storefront() {
                     <div>
                       <div className={`font-bold transition-colors ${isVarOutOfStock ? 'text-gray-500' : 'text-white group-hover:text-primary'}`}>
                         {variation.name}
-                        {isVarOutOfStock && <span className="ml-2 text-[10px] bg-red-500/20 text-red-500 px-2 py-0.5 rounded uppercase">Esgotado</span>}
+                        {isVarOutOfStock && <span className="ml-2 text-[10px] bg-red-500/20 text-red-500 px-2 py-0.5 rounded uppercase">Indisponível</span>}
                       </div>
                       {variation.validity && (
                         <div className="text-xs text-gray-500 mt-1">Validade: {variation.validity}</div>
