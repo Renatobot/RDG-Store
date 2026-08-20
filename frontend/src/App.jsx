@@ -19,9 +19,38 @@ import SocialProof from './components/SocialProof';
 import SupportButton from './components/SupportButton';
 
 function AdminRoute({ children }) {
-  const { user, loading } = useContext(AuthContext);
-  if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-white">Carregando...</div>;
-  if (!user || user.role !== 'ADMIN') return <Navigate to="/dashboard" />;
+  const { user, loading, logout } = useContext(AuthContext);
+  if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-white font-bold">Carregando painel...</div>;
+  if (!user) return <Navigate to="/login?redirect=/admin" />;
+  if (user.role !== 'ADMIN') {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="glass-card max-w-md w-full p-8 text-center border border-red-500/30 shadow-2xl">
+          <div className="w-16 h-16 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+            🛡️
+          </div>
+          <h2 className="text-xl font-black text-white mb-2">Acesso Restrito ao Painel</h2>
+          <p className="text-gray-400 text-sm mb-6">
+            A conta conectada (<strong className="text-white">{user.email}</strong>) é uma conta de cliente e não tem permissão de Administrador.
+          </p>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => { logout(); window.location.href = '/login?redirect=/admin'; }}
+              className="bg-primary hover:bg-primary/80 text-white font-bold py-2.5 px-4 rounded-xl transition-colors text-sm shadow-lg shadow-primary/20"
+            >
+              Trocar para Conta de Administrador
+            </button>
+            <a
+              href="/"
+              className="bg-white/10 hover:bg-white/20 text-gray-300 font-bold py-2.5 px-4 rounded-xl transition-colors text-sm"
+            >
+              Voltar para a Loja
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return children;
 }
 

@@ -12,7 +12,11 @@ export default function Login() {
 
   useEffect(() => {
     if (user) {
-      if (user.role === 'ADMIN') {
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get('redirect');
+      if (redirect && (user.role === 'ADMIN' || redirect !== '/admin')) {
+        navigate(redirect);
+      } else if (user.role === 'ADMIN') {
         navigate('/admin');
       } else {
         navigate('/dashboard');
